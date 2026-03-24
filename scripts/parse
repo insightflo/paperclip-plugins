@@ -1,0 +1,448 @@
+#!/usr/bin/env python3
+"""
+통합 파서 CLI — 입력 타입을 자동 감지하여 적절한 도구로 라우팅.
+
+사용법:
+  parse image.png              → hyocr (Apple Vision OCR)
+  parse document.pdf           → hyocr (GLM-OCR)
+  parse document.pdf --pdf-engine hyocr     → hyocr (명시 선택)
+  parse document.pdf --pdf-engine odl-fast  → opendataloader-pdf (opt-in)
+  parse document.pdf --pdf-engine auto      → 현재 보류 (3신호 기준선 재검증 중)
+  parse document.pdf --pdf-engine odl-hybrid → 미지원 (격리 venv+health check 전제)
+  parse page.html              → webparse (HTML→마크다운)
+  parse --url https://...      → webparse (fetch + 파싱)
+  echo "<html>" | parse        → webparse (stdin HTML 감지)
+  parse --url https://... --render  → 브라우저 렌더링 후 webparse (향후)
+"""
+from __future__ import annotations
+
+import sys
+import subprocess
+import shutil
+import contextlib
+import io
+from pathlib import Path
+from typing import Any, Callable, Optional, TypeVar
+
+HYOCR_ROOT = Path.home() / "Projects" / "ocr-hybrid-mvp"
+WEBPARSE_ROOT = Path.home() / "Projects" / "webparse"
+PDF_ENGINES = {"hyocr", "odl-fast", "auto"}
+FUTURE_PDF_ENGINE_GUIDANCE = {
+    "odl-hybrid": (
+        "기본 경로가 아닙니다. 전용 3.11+ 격리 venv에서 _lzma, 패키지 버전, "
+        "hybrid /health check를 먼저 통과한 뒤에만 검토하세요."
+    ),
+}
+AUTO_ENGINE_GUARDRAIL_MESSAGE = (
+    "에러: --pdf-engine auto 는 현재 보류 상태입니다. "
+    "3신호 기준선이 확정될 때까지 --pdf-engine hyocr 또는 --pdf-engine odl-fast를 명시하세요."
+)
+
+IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".tiff", ".bmp", ".heic", ".webp"}
+PDF_EXTS = {".pdf"}
+HTML_EXTS = {".html", ".htm", ".xhtml", ".mhtml"}
+T = TypeVar("T")
+
+
+def detect_stdin_type(content: str) -> str:
+    stripped = content.strip()
+    if stripped.startswith(("<!DOCTYPE", "<!doctype", "<html", "<HTML", "<head", "<body", "<div")):
+        return "html"
+    return "text"
+
+
+def run_hyocr(args: list[str]) -> int:
+    cmd = [sys.executable, "-m", "hyocr.cli", "run"] + args
+    return subprocess.run(cmd, cwd=str(HYOCR_ROOT)).returncode
+
+
+def run_webparse(args: list[str], stdin_data: str = None) -> int:
+    cmd = [sys.executable, "-m", "webparse"] + args
+    if stdin_data:
+        return subprocess.run(cmd, cwd=str(WEBPARSE_ROOT), input=stdin_data, text=True).returncode
+    return subprocess.run(cmd, cwd=str(WEBPARSE_ROOT)).returncode
+
+
+def run_odl_fast(args: list[str]) -> int:
+    cli = shutil.which("opendataloader-pdf")
+    if not cli:
+        print(
+            "에러: opendataloader-pdf 실행 파일을 PATH에서 찾을 수 없습니다. "
+            "설치 후 다시 시도하세요. (예: pip install -U opendataloader-pdf)",
+            file=sys.stderr,
+        )
+        return 127
+    cmd = [cli] + args
+    return subprocess.run(cmd).returncode
+
+
+def run_with_suppressed_stderr(action: Callable[[], T], warnings: list[str], context: str) -> T:
+    """Suppress noisy third-party stderr output and keep a compact service warning."""
+    buffer = io.StringIO()
+    with contextlib.redirect_stderr(buffer):
+        result = action()
+
+    lines = [line.strip() for line in buffer.getvalue().splitlines() if line.strip()]
+    if lines:
+        warnings.append(f"{context} 내부 진단 {len(lines)}건을 축약했습니다.")
+    return result
+
+
+def collect_pdf_auto_signals(path: Path, max_pages: int = 2) -> dict[str, Any]:
+    signals: dict[str, Any] = {
+        "available": True,
+        "inspected_pages": 0,
+        "text_counts": [],
+        "text_sum": 0,
+        "text_max": 0,
+        "first_page_text": 0,
+        "font_count": 0,
+        "font_source": "unknown",
+        "font_detail": "",
+        "first_page_images": 0,
+        "warnings": [],
+    }
+
+    try:
+        from pypdf import PdfReader
+    except Exception as exc:
+        signals["available"] = False
+        signals["warnings"].append(f"pypdf import 실패: {exc!r}")
+        return signals
+
+    try:
+        reader = run_with_suppressed_stderr(
+            lambda: PdfReader(str(path), strict=False),
+            signals["warnings"],
+            "PDF 열기",
+        )
+    except Exception as exc:
+        signals["available"] = False
+        signals["warnings"].append(f"PDF 열기 실패: {exc!r}")
+        return signals
+
+    if getattr(reader, "is_encrypted", False):
+        try:
+            if reader.decrypt("") == 0:
+                signals["available"] = False
+                signals["warnings"].append("암호화 PDF라서 신호 추출이 제한됩니다.")
+                return signals
+        except Exception as exc:
+            signals["available"] = False
+            signals["warnings"].append(f"암호화 PDF decrypt 실패: {exc!r}")
+            return signals
+
+    page_count = len(reader.pages)
+    inspected_pages = min(max_pages, page_count)
+    signals["inspected_pages"] = inspected_pages
+    if inspected_pages == 0:
+        signals["available"] = False
+        signals["warnings"].append("페이지가 없는 PDF입니다.")
+        return signals
+
+    text_counts: list[int] = []
+    for idx in range(inspected_pages):
+        page = reader.pages[idx]
+        try:
+            text = run_with_suppressed_stderr(
+                lambda: page.extract_text() or "",
+                signals["warnings"],
+                f"{idx + 1}p 텍스트 추출",
+            )
+        except Exception as exc:
+            text = ""
+            signals["warnings"].append(f"{idx + 1}p 텍스트 추출 실패: {exc!r}")
+        text_counts.append(len(text.strip()))
+
+    signals["text_counts"] = text_counts
+    signals["text_sum"] = sum(text_counts)
+    signals["text_max"] = max(text_counts) if text_counts else 0
+    signals["first_page_text"] = text_counts[0] if text_counts else 0
+    signals["first_page_images"] = count_images_on_first_page(reader)
+    (
+        signals["font_count"],
+        signals["font_source"],
+        signals["font_detail"],
+    ) = detect_font_count(path, reader, inspected_pages)
+    return signals
+
+
+def detect_font_count(path: Path, reader: Any, inspected_pages: int) -> tuple[int, str, str]:
+    cli_count = detect_font_count_by_pdffonts(path)
+    pypdf_count = detect_font_count_by_pypdf(reader, inspected_pages)
+    if cli_count is None:
+        return pypdf_count, "pypdf", f"pypdf={pypdf_count}"
+
+    # 두 계측값이 다를 때 오탐 방지를 위해 최소값으로 라우팅(스캔본의 pseudo-font 보정).
+    merged_count = min(cli_count, pypdf_count)
+    return merged_count, "pdffonts+pypdf(min)", f"pdffonts={cli_count}, pypdf={pypdf_count}"
+
+
+def detect_font_count_by_pdffonts(path: Path) -> Optional[int]:
+    cli = shutil.which("pdffonts")
+    if not cli:
+        return None
+    try:
+        completed = subprocess.run([cli, str(path)], capture_output=True, text=True, check=False)
+    except Exception:
+        return None
+    if completed.returncode != 0:
+        return None
+
+    lines = completed.stdout.splitlines()
+    if not lines:
+        return None
+
+    data_start = 0
+    for idx, line in enumerate(lines):
+        stripped = line.strip()
+        if stripped and set(stripped) <= {"-"}:
+            data_start = idx + 1
+            break
+
+    data_lines = [line for line in lines[data_start:] if line.strip()]
+    return len(data_lines)
+
+
+def detect_font_count_by_pypdf(reader: Any, inspected_pages: int) -> int:
+    fonts: set[str] = set()
+    for idx in range(inspected_pages):
+        page = reader.pages[idx]
+        resources = page.get("/Resources")
+        if not resources:
+            continue
+        try:
+            resources = resources.get_object()
+        except Exception:
+            pass
+
+        font_dict = resources.get("/Font")
+        if not font_dict:
+            continue
+        try:
+            font_dict = font_dict.get_object()
+        except Exception:
+            pass
+
+        for key, value in font_dict.items():
+            font_name = None
+            try:
+                font_obj = value.get_object()
+                base_font = font_obj.get("/BaseFont")
+                if base_font:
+                    font_name = str(base_font)
+            except Exception:
+                font_name = None
+            fonts.add(font_name or str(key))
+    return len(fonts)
+
+
+def count_images_on_first_page(reader: Any) -> int:
+    if not reader.pages:
+        return 0
+    page = reader.pages[0]
+    resources = page.get("/Resources")
+    if not resources:
+        return 0
+    try:
+        resources = resources.get_object()
+    except Exception:
+        pass
+    return count_images_in_resources(resources, seen=set())
+
+
+def count_images_in_resources(resources: Any, seen: set[int]) -> int:
+    xobjects = resources.get("/XObject")
+    if not xobjects:
+        return 0
+    try:
+        xobjects = xobjects.get_object()
+    except Exception:
+        return 0
+
+    count = 0
+    for value in xobjects.values():
+        try:
+            xobj = value.get_object()
+        except Exception:
+            continue
+
+        object_marker = id(xobj)
+        if object_marker in seen:
+            continue
+        seen.add(object_marker)
+
+        subtype = str(xobj.get("/Subtype"))
+        if subtype == "/Image":
+            count += 1
+            continue
+        if subtype == "/Form":
+            nested_resources = xobj.get("/Resources")
+            if not nested_resources:
+                continue
+            try:
+                nested_resources = nested_resources.get_object()
+            except Exception:
+                pass
+            count += count_images_in_resources(nested_resources, seen)
+    return count
+
+
+def choose_pdf_engine_auto(path: Path) -> tuple[str, str, dict[str, Any]]:
+    signals = collect_pdf_auto_signals(path)
+    if not signals["available"]:
+        return "uncertain", "신호 수집 실패", signals
+
+    text_sum = int(signals["text_sum"])
+    text_max = int(signals["text_max"])
+    first_page_text = int(signals["first_page_text"])
+    font_count = int(signals["font_count"])
+    first_page_images = int(signals["first_page_images"])
+    has_fonts = font_count > 0
+
+    if text_sum >= 150 or (text_max >= 80 and has_fonts):
+        return "odl-fast", "디지털 텍스트형 신호 충족", signals
+    if first_page_text == 0 and font_count == 0 and first_page_images > 0:
+        return "hyocr", "이미지형 스캔 신호 충족", signals
+    return "uncertain", "3신호 기준에 명확히 부합하지 않음", signals
+
+
+def print_auto_decision(path: Path, decision: str, reason: str, signals: dict[str, Any]) -> None:
+    text_counts = ",".join(str(v) for v in signals["text_counts"]) or "-"
+    warning_suffix = ""
+    if signals["warnings"]:
+        warning_suffix = f" | warnings={'; '.join(signals['warnings'])}"
+    print(
+        f"[auto] {path.name}: decision={decision}, reason={reason}, "
+        f"text_counts=[{text_counts}], text_sum={signals['text_sum']}, text_max={signals['text_max']}, "
+        f"font_count={signals['font_count']}({signals['font_source']}), "
+        f"first_page_images={signals['first_page_images']}, "
+        f"font_detail={signals['font_detail']}{warning_suffix}",
+        file=sys.stderr,
+    )
+
+
+def extract_pdf_engine(args: list[str]) -> tuple[list[str], str, bool]:
+    engine = "hyocr"
+    explicit = False
+    cleaned: list[str] = []
+    idx = 0
+
+    while idx < len(args):
+        arg = args[idx]
+        if arg == "--pdf-engine":
+            explicit = True
+            if idx + 1 >= len(args):
+                raise ValueError("에러: --pdf-engine 뒤에 값이 필요합니다. (지원: auto|hyocr|odl-fast)")
+            engine = args[idx + 1].strip().lower()
+            idx += 2
+            continue
+        if arg.startswith("--pdf-engine="):
+            explicit = True
+            engine = arg.split("=", 1)[1].strip().lower()
+            idx += 1
+            continue
+        cleaned.append(arg)
+        idx += 1
+
+    if explicit and engine not in PDF_ENGINES:
+        future_guidance = FUTURE_PDF_ENGINE_GUIDANCE.get(engine)
+        if future_guidance:
+            raise ValueError(f"에러: --pdf-engine {engine} 는 아직 지원하지 않습니다. {future_guidance}")
+        raise ValueError(
+            f"에러: 지원하지 않는 --pdf-engine 값입니다: {engine} "
+            f"(지원: {', '.join(sorted(PDF_ENGINES))})"
+        )
+    return cleaned, engine, explicit
+
+
+def warn_pdf_engine_ignored_if_needed(explicit: bool) -> None:
+    if explicit:
+        print("경고: --pdf-engine 옵션은 PDF 입력에서만 적용되어 무시됩니다.", file=sys.stderr)
+
+
+def extract_file_arg(args: list[str]) -> tuple[str, list[str]]:
+    """Resolve target file path and return remaining args to forward."""
+    if not args:
+        raise ValueError("에러: 입력 인자가 필요합니다.")
+
+    if args[0].startswith("-") and ("--file" in args or "-f" in args):
+        flag = "--file" if "--file" in args else "-f"
+        idx = args.index(flag)
+        if idx + 1 >= len(args):
+            raise ValueError("에러: --file 뒤에 경로가 필요합니다.")
+        file_arg = args[idx + 1]
+        forward_args = args[:idx] + args[idx + 2 :]
+        return file_arg, forward_args
+
+    return args[0], args[1:]
+
+
+def main() -> int:
+    try:
+        args, pdf_engine, pdf_engine_explicit = extract_pdf_engine(sys.argv[1:])
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+
+    # --url 모드 → webparse
+    if "--url" in args or "-u" in args:
+        warn_pdf_engine_ignored_if_needed(pdf_engine_explicit)
+        return run_webparse(args)
+
+    # stdin 모드
+    if not sys.stdin.isatty() and not args:
+        content = sys.stdin.read()
+        if detect_stdin_type(content) == "html":
+            return run_webparse([], stdin_data=content)
+        # 텍스트면 그냥 출력 (passthrough)
+        sys.stdout.write(content)
+        return 0
+
+    # 파일 모드
+    if args:
+        try:
+            file_arg, forward_args = extract_file_arg(args)
+        except ValueError as exc:
+            print(str(exc), file=sys.stderr)
+            return 1
+
+        path = Path(file_arg)
+        ext = path.suffix.lower()
+
+        if ext in IMAGE_EXTS:
+            warn_pdf_engine_ignored_if_needed(pdf_engine_explicit)
+            return run_hyocr([str(path)] + forward_args)
+        if ext in PDF_EXTS:
+            selected_engine = pdf_engine
+            if pdf_engine == "auto":
+                print(AUTO_ENGINE_GUARDRAIL_MESSAGE, file=sys.stderr)
+                return 1
+
+            if selected_engine == "odl-fast":
+                return run_odl_fast([str(path)] + forward_args)
+            return run_hyocr([str(path)] + forward_args)
+        elif ext in HTML_EXTS:
+            warn_pdf_engine_ignored_if_needed(pdf_engine_explicit)
+            return run_webparse(["--file", str(path)] + forward_args)
+        else:
+            # 확장자 모르면 내용 감지
+            if path.exists():
+                head = path.read_text(encoding="utf-8", errors="ignore")[:200]
+                if detect_stdin_type(head) == "html":
+                    warn_pdf_engine_ignored_if_needed(pdf_engine_explicit)
+                    return run_webparse(["--file", str(path)] + forward_args)
+                else:
+                    warn_pdf_engine_ignored_if_needed(pdf_engine_explicit)
+                    return run_hyocr([str(path)] + forward_args)
+            else:
+                print(f"에러: 파일을 찾을 수 없습니다: {file_arg}", file=sys.stderr)
+                return 1
+
+    # 인자 없음
+    print(__doc__.strip())
+    return 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

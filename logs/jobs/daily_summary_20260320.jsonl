@@ -1,6 +1,0 @@
-{"ts": "2026-03-20T10:00:05+09:00", "event": "run_started", "job": "daily_summary", "timeout_sec": 30, "retries": 1, "backoff_base_sec": 5, "command": ["/Users/kwak/.pyenv/shims/python3", "scripts/healthcheck/daily_summary.py"]}
-{"ts": "2026-03-20T10:00:05+09:00", "event": "attempt_finished", "job": "daily_summary", "attempt": 1, "max_attempts": 2, "status": "success", "returncode": 0, "duration_sec": 0.102, "stdout": "📊 AI Dev Factory 일일 요약 (2026-03-20 10:00)\n\n에이전트: 10명\n  idle: 10\n\n이슈: 11건\n  done: 4\n  todo: 7", "stderr": ""}
-{"ts": "2026-03-20T10:00:05+09:00", "event": "run_finished", "job": "daily_summary", "status": "success", "exit_code": 0, "duration_sec": 0.102}
-{"ts": "2026-03-20T10:30:21+09:00", "event": "run_started", "job": "daily_summary", "timeout_sec": 30, "retries": 1, "backoff_base_sec": 5, "command": ["/Users/kwak/.pyenv/shims/python3", "scripts/healthcheck/daily_summary.py"]}
-{"ts": "2026-03-20T10:30:22+09:00", "event": "attempt_finished", "job": "daily_summary", "attempt": 1, "max_attempts": 2, "status": "success", "returncode": 0, "duration_sec": 0.661, "stdout": "📊 AI Dev Factory 일일 요약 (2026-03-20 10:30)\n\n에이전트: 10명\n  idle: 10\n\n이슈: 11건\n  done: 4\n  todo: 7", "stderr": ""}
-{"ts": "2026-03-20T10:30:22+09:00", "event": "run_finished", "job": "daily_summary", "status": "success", "exit_code": 0, "duration_sec": 0.661}
