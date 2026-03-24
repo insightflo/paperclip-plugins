@@ -482,6 +482,7 @@ export function SystemGardenPage({ context }: PluginPageProps) {
         </div>
         <div style={{ display: "grid", gap: "12px", gridTemplateColumns: "minmax(0, 2fr) minmax(280px, 1fr)" }}>
           <div
+            key={layerFilter}
             ref={graphRef}
             style={{
               width: "100%",
