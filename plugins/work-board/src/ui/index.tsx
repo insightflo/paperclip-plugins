@@ -1,6 +1,6 @@
 import { usePluginData, type PluginPageProps, type PluginSidebarProps, type PluginWidgetProps } from "@paperclipai/plugin-sdk/ui";
 import { useState, type CSSProperties } from "react";
-import { PAGE_ROUTE } from "../constants.js";
+import { COLUMN_UNASSIGNED, PAGE_ROUTE } from "../constants.js";
 import type { BoardIssueCard, MissionCard, WorkBoardSnapshot } from "../worker.js";
 
 const pageStyle: CSSProperties = {
@@ -291,15 +291,48 @@ function MissionCardPanel({ mission, companyPrefix }: { mission: MissionCard; co
   );
 }
 
+function UnassignedSection({
+  missions,
+  companyPrefix,
+}: {
+  missions: MissionCard[];
+  companyPrefix: string | null | undefined;
+}) {
+  const allItems = missions.flatMap((m) => m.buckets.flatMap((b) => b.items));
+  if (allItems.length === 0) return null;
+
+  return (
+    <section style={{ ...columnStyle, gridColumn: "1 / -1" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: "8px", alignItems: "center" }}>
+        <strong style={{ fontSize: "15px", opacity: 0.6 }}>미분류</strong>
+        <span style={{ ...tinyMutedStyle, padding: "4px 8px", borderRadius: "999px", background: "color-mix(in srgb, var(--muted, #e5e7eb) 52%, transparent)" }}>
+          {allItems.length}건
+        </span>
+      </div>
+      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
+        {allItems.map((item) => (
+          <IssueTile key={item.id} companyPrefix={companyPrefix} issue={item} />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function ColumnPanel({
   name,
   missions,
   companyPrefix,
+  isUnassigned,
 }: {
   name: string;
   missions: MissionCard[];
   companyPrefix: string | null | undefined;
+  isUnassigned?: boolean;
 }) {
+  if (isUnassigned) {
+    return <UnassignedSection missions={missions} companyPrefix={companyPrefix} />;
+  }
+
   return (
     <section style={columnStyle}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: "8px", alignItems: "center" }}>
@@ -362,7 +395,7 @@ function BoardContent({
         </div>
 
         <div style={metricsGridStyle}>
-          <MetricCard label="미션 수" value={data.totals.missions} helper="이번 주 추적 중인 미션" accent="#0ea5e9" />
+          <MetricCard label="미션 수" value={data.columns.filter((c) => c.key !== COLUMN_UNASSIGNED).reduce((sum, c) => sum + c.missionCount, 0)} helper="이번 주 추적 중인 미션 (미분류 제외)" accent="#0ea5e9" />
           <MetricCard label="전체 태스크" value={data.totals.tasks} helper="미션에 포함된 작업 수" accent="#6366f1" />
           <MetricCard label="진행/예정" value={`${data.totals.inProgress + data.totals.todo}`} helper="진행 중 + 해야 할" accent="#f59e0b" />
           <MetricCard label="지난주 미완료" value={data.totals.overdue} helper={data.weekRange.label} accent="#ef4444" />
@@ -377,10 +410,14 @@ function BoardContent({
       </div>
 
       <section style={boardGridStyle}>
-        {data.columns.map((column) => (
+        {data.columns.filter((c) => c.key !== COLUMN_UNASSIGNED).map((column) => (
           <ColumnPanel key={column.key} name={column.name} missions={column.missions} companyPrefix={context.companyPrefix} />
         ))}
       </section>
+
+      {data.columns.filter((c) => c.key === COLUMN_UNASSIGNED).map((column) => (
+        <ColumnPanel key={column.key} name={column.name} missions={column.missions} companyPrefix={context.companyPrefix} isUnassigned />
+      ))}
     </div>
   );
 }
