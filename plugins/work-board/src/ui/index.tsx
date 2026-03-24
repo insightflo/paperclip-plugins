@@ -1,7 +1,7 @@
 import { usePluginData, type PluginPageProps, type PluginSidebarProps, type PluginWidgetProps } from "@paperclipai/plugin-sdk/ui";
 import { useState, type CSSProperties } from "react";
-import { PAGE_ROUTE, WORKSTREAMS } from "../constants.js";
-import type { BoardIssueCard, WorkBoardSnapshot, WorkstreamSnapshot } from "../worker.js";
+import { PAGE_ROUTE } from "../constants.js";
+import type { BoardIssueCard, MissionCard, WorkBoardSnapshot } from "../worker.js";
 
 const pageStyle: CSSProperties = {
   display: "grid",
@@ -40,7 +40,7 @@ const metricCardStyle: CSSProperties = {
 const boardGridStyle: CSSProperties = {
   display: "grid",
   gap: "18px",
-  gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
+  gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))",
   alignItems: "start",
 };
 
@@ -54,19 +54,28 @@ const columnStyle: CSSProperties = {
   boxShadow: "0 18px 48px rgba(15, 23, 42, 0.05)",
 };
 
-const bucketStyle: CSSProperties = {
+const missionCardStyle: CSSProperties = {
   display: "grid",
   gap: "10px",
+  padding: "14px",
+  borderRadius: "16px",
+  border: "1px solid color-mix(in srgb, var(--border, #d4d4d8) 75%, transparent)",
+  background: "color-mix(in srgb, var(--background, #f8fafc) 78%, var(--card, #ffffff))",
+};
+
+const bucketSectionStyle: CSSProperties = {
+  display: "grid",
+  gap: "8px",
 };
 
 const bucketHeaderButtonStyle: CSSProperties = {
   display: "flex",
-  width: "100%",
   alignItems: "center",
   justifyContent: "space-between",
   gap: "8px",
-  padding: 0,
+  width: "100%",
   border: "none",
+  padding: 0,
   background: "transparent",
   cursor: "pointer",
   textAlign: "left",
@@ -76,10 +85,10 @@ const bucketHeaderButtonStyle: CSSProperties = {
 const issueCardStyle: CSSProperties = {
   display: "grid",
   gap: "8px",
-  padding: "12px 14px",
-  borderRadius: "16px",
+  padding: "10px 12px",
+  borderRadius: "12px",
   border: "1px solid color-mix(in srgb, var(--border, #d4d4d8) 75%, transparent)",
-  background: "color-mix(in srgb, var(--background, #f8fafc) 78%, var(--card, #ffffff))",
+  background: "color-mix(in srgb, var(--card, #ffffff) 90%, transparent)",
 };
 
 const tinyMutedStyle: CSSProperties = {
@@ -125,35 +134,6 @@ function relativeAgeLabel(days: number): string {
   return `${days}일 경과`;
 }
 
-function toneStyle(tone: WorkstreamSnapshot["healthTone"]): CSSProperties {
-  if (tone === "complete") {
-    return {
-      background: "color-mix(in srgb, #22c55e 14%, transparent)",
-      color: "#166534",
-      border: "1px solid color-mix(in srgb, #22c55e 32%, transparent)",
-    };
-  }
-  if (tone === "progress") {
-    return {
-      background: "color-mix(in srgb, #0ea5e9 12%, transparent)",
-      color: "#075985",
-      border: "1px solid color-mix(in srgb, #0ea5e9 28%, transparent)",
-    };
-  }
-  if (tone === "attention") {
-    return {
-      background: "color-mix(in srgb, #f59e0b 16%, transparent)",
-      color: "#92400e",
-      border: "1px solid color-mix(in srgb, #f59e0b 34%, transparent)",
-    };
-  }
-  return {
-    background: "color-mix(in srgb, var(--muted, #e5e7eb) 45%, transparent)",
-    color: "color-mix(in srgb, var(--foreground, #0f172a) 72%, transparent)",
-    border: "1px solid color-mix(in srgb, var(--border, #d4d4d8) 82%, transparent)",
-  };
-}
-
 function useWorkBoard(companyId: string | null | undefined) {
   return usePluginData<WorkBoardSnapshot>("work-board-overview", {
     companyId: companyId ?? "",
@@ -170,13 +150,7 @@ function MetricCard({ label, value, helper, accent }: { label: string; value: st
   );
 }
 
-function IssueTile({
-  companyPrefix,
-  issue,
-}: {
-  companyPrefix: string | null | undefined;
-  issue: BoardIssueCard;
-}) {
+function IssueTile({ companyPrefix, issue }: { companyPrefix: string | null | undefined; issue: BoardIssueCard }) {
   return (
     <a href={issuePath(companyPrefix, issue)} style={anchorResetStyle}>
       <article style={issueCardStyle}>
@@ -185,98 +159,79 @@ function IssueTile({
           <span style={{ ...tinyMutedStyle, whiteSpace: "nowrap" }}>{issue.statusLabel}</span>
         </div>
         <div style={{ fontSize: "14px", lineHeight: 1.45 }}>{issue.title}</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+        <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
           <span style={{ ...tinyMutedStyle, padding: "2px 8px", borderRadius: "999px", background: "color-mix(in srgb, var(--muted, #e5e7eb) 58%, transparent)" }}>
             {issue.priority}
           </span>
-          {issue.failedThisWeek ? (
+          {issue.overdueFromLastWeek ? (
             <span style={{ ...tinyMutedStyle, padding: "2px 8px", borderRadius: "999px", background: "color-mix(in srgb, #ef4444 16%, transparent)", color: "#991b1b" }}>
-              실패
+              overdue
             </span>
           ) : null}
           {issue.stale ? (
-            <span style={{ ...tinyMutedStyle, padding: "2px 8px", borderRadius: "999px", background: "color-mix(in srgb, #ef4444 14%, transparent)", color: "#991b1b" }}>
+            <span style={{ ...tinyMutedStyle, padding: "2px 8px", borderRadius: "999px", background: "color-mix(in srgb, #f59e0b 16%, transparent)", color: "#92400e" }}>
               stale
             </span>
           ) : null}
-          <span style={{ ...tinyMutedStyle, padding: "2px 8px", borderRadius: "999px", background: "color-mix(in srgb, var(--accent, #7dd3fc) 22%, transparent)" }}>
-            {issue.matchedBy}
-          </span>
         </div>
         <div style={tinyMutedStyle}>
           {issue.status === "done"
             ? `완료 ${formatDateTime(issue.completedAt)}`
-            : issue.failedThisWeek
-              ? `실패 ${formatDateTime(issue.cancelledAt)} · ${relativeAgeLabel(issue.ageDays)}`
-              : `${relativeAgeLabel(issue.ageDays)} · 업데이트 ${formatDateTime(issue.updatedAt)}`}
+            : `${relativeAgeLabel(issue.ageDays)} · 업데이트 ${formatDateTime(issue.updatedAt)}`}
         </div>
       </article>
     </a>
   );
 }
 
-function bucketAccent(bucketKey: WorkstreamSnapshot["buckets"][number]["key"]) {
-  if (bucketKey === "overdueLastWeek") {
+function bucketAccent(key: string) {
+  if (key === "overdue") {
     return { color: "#ef4444", background: "color-mix(in srgb, #ef4444 10%, transparent)" };
   }
-  if (bucketKey === "todo") {
+  if (key === "todo") {
     return { color: "#f59e0b", background: "color-mix(in srgb, #f59e0b 10%, transparent)" };
   }
-  if (bucketKey === "inProgress") {
+  if (key === "inProgress") {
     return { color: "#3b82f6", background: "color-mix(in srgb, #3b82f6 10%, transparent)" };
   }
   return { color: "#22c55e", background: "color-mix(in srgb, #22c55e 10%, transparent)" };
 }
 
-function BucketSection({
-  bucketKey,
-  label,
-  count,
-  items,
+function MissionBucketSection({
+  bucket,
   companyPrefix,
 }: {
-  bucketKey: WorkstreamSnapshot["buckets"][number]["key"];
-  label: string;
-  count: number;
-  items: BoardIssueCard[];
+  bucket: MissionCard["buckets"][number];
   companyPrefix: string | null | undefined;
 }) {
-  const [collapsed, setCollapsed] = useState(count === 0);
-  const accent = bucketAccent(bucketKey);
+  const [collapsed, setCollapsed] = useState(bucket.count === 0);
+  const accent = bucketAccent(bucket.key);
 
   return (
     <section
       style={{
-        ...bucketStyle,
-        padding: "12px 14px 12px 12px",
-        borderRadius: "16px",
+        ...bucketSectionStyle,
+        padding: "10px 12px",
+        borderRadius: "12px",
         borderLeft: `3px solid ${accent.color}`,
         background: accent.background,
       }}
     >
       <button type="button" style={bucketHeaderButtonStyle} onClick={() => setCollapsed((value) => !value)}>
         <span style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-          <span
-            aria-hidden="true"
-            style={{
-              width: "8px",
-              height: "8px",
-              borderRadius: "999px",
-              background: accent.color,
-              flexShrink: 0,
-            }}
-          />
-          <strong style={{ fontSize: "14px" }}>{label}</strong>
+          <span aria-hidden="true" style={{ width: "8px", height: "8px", borderRadius: "999px", background: accent.color }} />
+          <strong style={{ fontSize: "13px" }}>{bucket.label}</strong>
         </span>
         <span style={{ ...tinyMutedStyle, display: "flex", alignItems: "center", gap: "8px" }}>
-          <span>{count}건</span>
+          <span>{bucket.count}건</span>
           <span aria-hidden="true">{collapsed ? "▸" : "▾"}</span>
         </span>
       </button>
-      {!collapsed ? items.length > 0 ? items.map((item) => (
+
+      {!collapsed ? bucket.items.length > 0 ? bucket.items.map((item) => (
         <IssueTile key={item.id} companyPrefix={companyPrefix} issue={item} />
       )) : (
-        <div style={{ ...tinyMutedStyle, padding: "12px 14px", borderRadius: "14px", background: "color-mix(in srgb, var(--muted, #e5e7eb) 38%, transparent)" }}>
+        <div style={{ ...tinyMutedStyle, padding: "8px 10px", borderRadius: "10px", background: "color-mix(in srgb, var(--muted, #e5e7eb) 38%, transparent)" }}>
           비어 있음
         </div>
       ) : null}
@@ -284,64 +239,95 @@ function BucketSection({
   );
 }
 
-function WorkstreamColumn({
-  stream,
+function MissionCardPanel({ mission, companyPrefix }: { mission: MissionCard; companyPrefix: string | null | undefined }) {
+  return (
+    <article style={missionCardStyle}>
+      <div style={{ display: "grid", gap: "6px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "start" }}>
+          <div style={{ display: "grid", gap: "4px" }}>
+            <strong style={{ fontSize: "16px" }}>{mission.title}</strong>
+            <div style={tinyMutedStyle}>
+              {mission.missionIdentifier ?? mission.missionIssueId ?? mission.missionId.slice(0, 8)}
+            </div>
+          </div>
+          <span style={{ ...tinyMutedStyle, padding: "4px 8px", borderRadius: "999px", background: "color-mix(in srgb, var(--accent, #7dd3fc) 16%, transparent)" }}>
+            {mission.progress.done}/{mission.progress.total}
+          </span>
+        </div>
+
+        <div style={{ display: "grid", gap: "4px" }}>
+          <div style={{ ...tinyMutedStyle, display: "flex", justifyContent: "space-between", gap: "8px" }}>
+            <span>진행률</span>
+            <span>{mission.progress.percent}%</span>
+          </div>
+          <div style={{ width: "100%", height: "8px", borderRadius: "999px", background: "color-mix(in srgb, var(--muted, #e5e7eb) 60%, transparent)", overflow: "hidden" }}>
+            <div
+              style={{
+                width: `${mission.progress.percent}%`,
+                height: "100%",
+                borderRadius: "999px",
+                background: "linear-gradient(90deg, #22c55e, #0ea5e9)",
+              }}
+            />
+          </div>
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gap: "8px" }}>
+        {mission.buckets.map((bucket) => (
+          <MissionBucketSection key={bucket.key} bucket={bucket} companyPrefix={companyPrefix} />
+        ))}
+      </div>
+    </article>
+  );
+}
+
+function ColumnPanel({
+  name,
+  missions,
   companyPrefix,
 }: {
-  stream: WorkstreamSnapshot;
+  name: string;
+  missions: MissionCard[];
   companyPrefix: string | null | undefined;
 }) {
   return (
     <section style={columnStyle}>
-      <div style={{ display: "grid", gap: "10px" }}>
-        <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "start" }}>
-          <div style={{ display: "grid", gap: "4px" }}>
-            <strong style={{ fontSize: "18px" }}>{stream.name}</strong>
-            <div style={tinyMutedStyle}>{stream.description}</div>
-          </div>
-          <span style={{ ...tinyMutedStyle, ...toneStyle(stream.healthTone), padding: "6px 10px", borderRadius: "999px", whiteSpace: "nowrap" }}>
-            {stream.healthLabel}
-          </span>
-        </div>
-        <div style={tinyMutedStyle}>{stream.summary}</div>
-        <div style={{ display: "flex", flexWrap: "wrap", gap: "8px" }}>
-          <span style={{ ...tinyMutedStyle, padding: "4px 8px", borderRadius: "999px", background: "color-mix(in srgb, #ef4444 12%, transparent)" }}>
-            지난주 미완료 {stream.buckets.find((b: {key: string}) => b.key === "overdueLastWeek")?.count ?? 0}
-          </span>
-          <span style={{ ...tinyMutedStyle, padding: "4px 8px", borderRadius: "999px", background: "color-mix(in srgb, #f59e0b 12%, transparent)" }}>
-            해야 할 {stream.buckets.find((b: {key: string}) => b.key === "todo")?.count ?? 0}
-          </span>
-          <span style={{ ...tinyMutedStyle, padding: "4px 8px", borderRadius: "999px", background: "color-mix(in srgb, #3b82f6 12%, transparent)" }}>
-            진행 중 {stream.buckets.find((b: {key: string}) => b.key === "inProgress")?.count ?? 0}
-          </span>
-          <span style={{ ...tinyMutedStyle, padding: "4px 8px", borderRadius: "999px", background: "color-mix(in srgb, #22c55e 12%, transparent)" }}>
-            완료 {stream.doneThisWeekCount}
-          </span>
-        </div>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: "8px", alignItems: "center" }}>
+        <strong style={{ fontSize: "17px" }}>{name}</strong>
+        <span style={{ ...tinyMutedStyle, padding: "4px 8px", borderRadius: "999px", background: "color-mix(in srgb, var(--muted, #e5e7eb) 52%, transparent)" }}>
+          {missions.length} 미션
+        </span>
       </div>
-      {stream.buckets.map((bucket) => (
-        <BucketSection
-          key={bucket.key}
-          bucketKey={bucket.key}
-          label={bucket.label}
-          count={bucket.count}
-          items={bucket.items}
-          companyPrefix={companyPrefix}
-        />
-      ))}
+
+      {missions.length > 0 ? missions.map((mission) => (
+        <MissionCardPanel key={mission.missionId} mission={mission} companyPrefix={companyPrefix} />
+      )) : (
+        <div style={tinyMutedStyle}>표시할 미션이 없습니다.</div>
+      )}
     </section>
   );
 }
 
-function BoardContent({ context, data, onRefresh, loading }: { context: PluginPageProps["context"]; data: WorkBoardSnapshot; onRefresh: () => void; loading: boolean }) {
+function BoardContent({
+  context,
+  data,
+  onRefresh,
+  loading,
+}: {
+  context: PluginPageProps["context"];
+  data: WorkBoardSnapshot;
+  onRefresh: () => void;
+  loading: boolean;
+}) {
   return (
     <div style={pageStyle}>
       <section style={heroStyle}>
         <div style={{ display: "grid", gap: "8px" }}>
-          <div style={{ ...tinyMutedStyle, textTransform: "uppercase", letterSpacing: "0.08em" }}>weekly work board</div>
-      <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+          <div style={{ ...tinyMutedStyle, textTransform: "uppercase", letterSpacing: "0.08em" }}>mission-first board</div>
+          <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
             <h1 style={{ margin: 0, fontSize: "clamp(28px, 4vw, 42px)", lineHeight: 1.02 }}>
-              금주 업무 영역 보드
+              금주 미션 보드
             </h1>
             <button
               type="button"
@@ -362,14 +348,15 @@ function BoardContent({ context, data, onRefresh, loading }: { context: PluginPa
             </button>
           </div>
           <div style={{ fontSize: "15px", lineHeight: 1.6, maxWidth: "760px" }}>
-            이슈에 달린 라벨로 업무 영역을 분류합니다. 라벨이 없으면 키워드로 자동 매칭됩니다.
+            parent issue를 미션으로 보고 하위 이슈를 그룹화합니다. 하위 라벨이 없으면 부모 라벨을 상속해 칼럼에 배치합니다.
           </div>
         </div>
+
         <div style={metricsGridStyle}>
-          <MetricCard label="지난주 미완료" value={data.totals.overdueLastWeek} helper="지난주에 끝냈어야 하는 항목" accent="#ef4444" />
-          <MetricCard label="이번주 해야 할" value={data.totals.todo} helper="이번 주 처리 대상" accent="#f59e0b" />
-          <MetricCard label="진행 중" value={data.totals.inProgress} helper="현재 작업 중인 항목" accent="#3b82f6" />
-          <MetricCard label="이번주 완료" value={data.totals.doneThisWeek} helper={data.weekRange.label} accent="#22c55e" />
+          <MetricCard label="미션 수" value={data.totals.missions} helper="이번 주 추적 중인 미션" accent="#0ea5e9" />
+          <MetricCard label="전체 태스크" value={data.totals.tasks} helper="미션에 포함된 작업 수" accent="#6366f1" />
+          <MetricCard label="진행/예정" value={`${data.totals.inProgress + data.totals.todo}`} helper="진행 중 + 해야 할" accent="#f59e0b" />
+          <MetricCard label="지난주 미완료" value={data.totals.overdue} helper={data.weekRange.label} accent="#ef4444" />
         </div>
       </section>
 
@@ -381,26 +368,10 @@ function BoardContent({ context, data, onRefresh, loading }: { context: PluginPa
       </div>
 
       <section style={boardGridStyle}>
-        {data.workstreams.map((stream) => (
-          <WorkstreamColumn key={stream.name} stream={stream} companyPrefix={context.companyPrefix} />
+        {data.columns.map((column) => (
+          <ColumnPanel key={column.key} name={column.name} missions={column.missions} companyPrefix={context.companyPrefix} />
         ))}
       </section>
-
-      {data.unmatched.length > 0 ? (
-        <section style={{ ...columnStyle, gap: "12px" }}>
-          <div style={{ display: "grid", gap: "6px" }}>
-            <strong style={{ fontSize: "18px" }}>미분류 이슈</strong>
-            <div style={tinyMutedStyle}>
-              현재 규칙으로 어느 영역에도 배정되지 않은 열린 이슈다. 필요하면 키워드 규칙이나 `projectId`/`goalId` 매핑을 늘리면 된다.
-            </div>
-          </div>
-          <div style={{ display: "grid", gap: "10px" }}>
-            {data.unmatched.map((issue) => (
-              <IssueTile key={issue.id} companyPrefix={context.companyPrefix} issue={issue} />
-            ))}
-          </div>
-        </section>
-      ) : null}
     </div>
   );
 }
@@ -452,32 +423,29 @@ export function WorkBoardDashboardWidget({ context }: PluginWidgetProps) {
   return (
     <section style={{ display: "grid", gap: "12px" }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "baseline" }}>
-        <strong>Weekly Work Board</strong>
+        <strong>Mission Board</strong>
         <a href={pluginPagePath(context.companyPrefix)} style={tinyMutedStyle}>Open board</a>
       </div>
       <div style={tinyMutedStyle}>{board.data.weekRange.label}</div>
+      <div style={{ display: "grid", gap: "6px" }}>
+        <div style={tinyMutedStyle}>미션 {board.data.totals.missions} · 태스크 {board.data.totals.tasks}</div>
+        <div style={tinyMutedStyle}>지난주 미완료 {board.data.totals.overdue} · 진행 {board.data.totals.inProgress} · 할 일 {board.data.totals.todo} · 완료 {board.data.totals.done}</div>
+      </div>
       <div style={{ display: "grid", gap: "8px" }}>
-        {board.data.workstreams.map((stream) => (
+        {board.data.columns.slice(0, 3).map((column) => (
           <div
-            key={stream.name}
+            key={column.key}
             style={{
               display: "grid",
-              gap: "6px",
+              gap: "4px",
               padding: "10px 12px",
-              borderRadius: "14px",
+              borderRadius: "12px",
               border: "1px solid color-mix(in srgb, var(--border, #d4d4d8) 75%, transparent)",
               background: "color-mix(in srgb, var(--card, #ffffff) 95%, transparent)",
             }}
           >
-            <div style={{ display: "flex", justifyContent: "space-between", gap: "8px", alignItems: "center" }}>
-              <strong style={{ fontSize: "14px" }}>{stream.name}</strong>
-              <span style={{ ...tinyMutedStyle, ...toneStyle(stream.healthTone), padding: "4px 8px", borderRadius: "999px" }}>
-                {stream.healthLabel}
-              </span>
-            </div>
-            <div style={tinyMutedStyle}>
-              미완료 {stream.buckets.find((b: {key: string}) => b.key === "overdueLastWeek")?.count ?? 0} · 해야 할 {stream.buckets.find((b: {key: string}) => b.key === "todo")?.count ?? 0} · 진행 {stream.buckets.find((b: {key: string}) => b.key === "inProgress")?.count ?? 0} · 완료 {stream.doneThisWeekCount}
-            </div>
+            <strong style={{ fontSize: "13px" }}>{column.name}</strong>
+            <div style={tinyMutedStyle}>미션 {column.missionCount}</div>
           </div>
         ))}
       </div>

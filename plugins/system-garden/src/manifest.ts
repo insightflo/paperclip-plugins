@@ -1,9 +1,12 @@
 import type { PaperclipPluginManifestV1 } from "@paperclipai/plugin-sdk";
-
-const PLUGIN_ID = "paperclipai.system-garden";
-const PLUGIN_VERSION = "0.1.0";
-const PLUGIN_DISPLAY_NAME = "System Garden";
-const PAGE_ROUTE = "system-garden";
+import {
+  EXPORT_NAMES,
+  PAGE_ROUTE,
+  PLUGIN_DISPLAY_NAME,
+  PLUGIN_ID,
+  PLUGIN_VERSION,
+  SLOT_IDS,
+} from "./constants.js";
 
 const capabilities = [
   "issues.read",
@@ -29,16 +32,16 @@ const manifest: PaperclipPluginManifestV1 = {
     slots: [
       {
         type: "page",
-        id: "system-garden-page",
+        id: SLOT_IDS.page,
         displayName: PLUGIN_DISPLAY_NAME,
-        exportName: "SystemGardenPage",
+        exportName: EXPORT_NAMES.page,
         routePath: PAGE_ROUTE,
       },
       {
         type: "sidebar",
-        id: "system-garden-sidebar-link",
+        id: SLOT_IDS.sidebar,
         displayName: PLUGIN_DISPLAY_NAME,
-        exportName: "SystemGardenSidebarLink",
+        exportName: EXPORT_NAMES.sidebar,
       },
     ],
   },

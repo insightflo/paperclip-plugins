@@ -1,18 +1,21 @@
 import { definePlugin, runWorker, type PluginContext } from "@paperclipai/plugin-sdk";
 import {
-  DEFAULT_COMPANY_ID,
+  COLUMN_UNASSIGNED,
   ISSUE_STATUS_LABELS,
   PLUGIN_DISPLAY_NAME,
   PRIORITY_WEIGHTS,
-  WORKSTREAMS,
-  type WorkstreamDefinition,
+  UNIQUE_WORK_LABELS,
 } from "./constants.js";
 
-type BoardBucketKey = "overdueLastWeek" | "todo" | "inProgress" | "doneThisWeek";
-type WorkstreamTone = "neutral" | "attention" | "progress" | "complete";
-type MatchType = "label" | "keyword";
-
+type BoardBucketKey = "overdue" | "todo" | "inProgress" | "done";
 type IssueRecord = Awaited<ReturnType<PluginContext["issues"]["list"]>>[number];
+type JsonRecord = Record<string, unknown>;
+
+type MissionProgress = {
+  total: number;
+  done: number;
+  percent: number;
+};
 
 export type BoardIssueCard = {
   id: string;
@@ -21,37 +24,40 @@ export type BoardIssueCard = {
   status: string;
   statusLabel: string;
   priority: string;
-  projectId: string | null;
-  goalId: string | null;
+  parentId: string | null;
+  effectiveLabels: string[];
   createdAt: string | null;
   updatedAt: string | null;
   completedAt: string | null;
-  cancelledAt: string | null;
   ageDays: number;
   stale: boolean;
-  lastWeekUnfinished: boolean;
-  failedThisWeek: boolean;
-  matchedBy: MatchType;
+  overdueFromLastWeek: boolean;
 };
 
-export type BoardBucket = {
+export type MissionBucket = {
   key: BoardBucketKey;
   label: string;
   count: number;
   items: BoardIssueCard[];
 };
 
-export type WorkstreamSnapshot = {
-  id: string;
+export type MissionCard = {
+  missionId: string;
+  missionIssueId: string | null;
+  missionIdentifier: string | null;
+  title: string;
+  columnName: string;
+  labels: string[];
+  progress: MissionProgress;
+  buckets: MissionBucket[];
+  updatedAt: string | null;
+};
+
+export type MissionColumn = {
+  key: string;
   name: string;
-  description: string;
-  healthLabel: string;
-  healthTone: WorkstreamTone;
-  openCount: number;
-  doneThisWeekCount: number;
-  staleCount: number;
-  summary: string;
-  buckets: BoardBucket[];
+  missionCount: number;
+  missions: MissionCard[];
 };
 
 export type WorkBoardSnapshot = {
@@ -63,28 +69,34 @@ export type WorkBoardSnapshot = {
     label: string;
   };
   totals: {
-    open: number;
-    todo: number;
+    missions: number;
+    tasks: number;
+    done: number;
     inProgress: number;
-    doneThisWeek: number;
-    stale: number;
-    unmatched: number;
-    overdueLastWeek: number;
+    todo: number;
+    overdue: number;
   };
-  workstreams: WorkstreamSnapshot[];
-  unmatched: BoardIssueCard[];
+  columns: MissionColumn[];
 };
 
 const OPEN_STATUSES = new Set(["backlog", "todo", "in_progress", "in_review", "blocked"]);
-const TODO_STATUSES = new Set(["backlog", "todo", "blocked"]);
 const IN_PROGRESS_STATUSES = new Set(["in_progress", "in_review"]);
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const STALE_AFTER_DAYS = 5;
-const DEFAULT_WORKSTREAM_NAMES = new Set(WORKSTREAMS.map((stream) => stream.name));
+const UNIQUE_WORK_LABEL_SET = new Set<string>(UNIQUE_WORK_LABELS);
 
-function getCompanyId(params: Record<string, unknown>): string {
-  const companyId = typeof params.companyId === "string" ? params.companyId.trim() : "";
-  return companyId;
+function asString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function getCompanyId(ctx: PluginContext, params: Record<string, unknown>): string {
+  const fromParams = asString(params.companyId);
+  if (fromParams) {
+    return fromParams;
+  }
+
+  const fromContext = asString((ctx as unknown as JsonRecord).companyId);
+  return fromContext;
 }
 
 function toIsoString(value: Date | string | null | undefined): string | null {
@@ -100,10 +112,6 @@ function parseDate(value: Date | string | null | undefined): Date | null {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
-function isCancelledIssue(issue: IssueRecord): boolean {
-  return issue.status === "cancelled" || parseDate(issue.cancelledAt) !== null;
-}
-
 function startOfWeekKst(now = new Date()): Date {
   const formatter = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Seoul",
@@ -114,7 +122,8 @@ function startOfWeekKst(now = new Date()): Date {
   });
 
   const parts = Object.fromEntries(
-    formatter.formatToParts(now)
+    formatter
+      .formatToParts(now)
       .filter((part) => part.type !== "literal")
       .map((part) => [part.type, part.value]),
   ) as Record<string, string>;
@@ -152,76 +161,26 @@ function formatWeekRangeLabel(weekStart: Date, weekEnd: Date): string {
   return `${formatter.format(weekStart)} - ${formatter.format(weekEnd)} (KST)`;
 }
 
-function containsKeyword(haystack: string, keywords: readonly string[]): number {
-  const normalized = haystack.toLowerCase();
-  let score = 0;
-  for (const keyword of keywords) {
-    if (normalized.includes(keyword.toLowerCase())) score += 1;
-  }
-  return score;
-}
+function issueLabelNames(issue: IssueRecord): string[] {
+  const rawLabels = Array.isArray(issue.labels) ? issue.labels : [];
+  const names: string[] = [];
 
-function normalizeName(value: string): string {
-  return value.trim().toLowerCase();
-}
-
-function classifyWorkstream(
-  issue: IssueRecord,
-  options?: { allowKeywordFallback?: boolean },
-): { stream: WorkstreamDefinition | null; matchedBy: MatchType | null } {
-  const labels = issue.labels ?? [];
-  for (const stream of WORKSTREAMS) {
-    const streamName = normalizeName(stream.name);
-    const labelMatch = labels.find((label) => normalizeName(label.name) === streamName);
-    if (labelMatch) {
-      return { stream, matchedBy: "label" };
+  for (const rawLabel of rawLabels) {
+    const labelName = asString((rawLabel as unknown as JsonRecord).name);
+    if (labelName) {
+      names.push(labelName);
     }
   }
 
-  if (!options?.allowKeywordFallback) {
-    return { stream: null, matchedBy: null };
-  }
-
-  const searchableText = [issue.title, issue.description ?? ""].join("\n");
-  let bestMatch: { stream: WorkstreamDefinition; score: number } | null = null;
-
-  for (const stream of WORKSTREAMS) {
-    const score = containsKeyword(searchableText, stream.keywords);
-    if (score === 0) continue;
-    if (!bestMatch || score > bestMatch.score) {
-      bestMatch = { stream, score };
-    }
-  }
-
-  if (!bestMatch) return { stream: null, matchedBy: null };
-  return { stream: bestMatch.stream, matchedBy: "keyword" };
+  return names;
 }
 
-function createIssueCard(issue: IssueRecord, matchedBy: MatchType, now = new Date()): BoardIssueCard {
-  const createdAt = parseDate(issue.createdAt);
-  const updatedAt = parseDate(issue.updatedAt) ?? createdAt;
-  const ageAnchor = updatedAt ?? createdAt ?? now;
-  const ageDays = Math.max(0, Math.floor((now.getTime() - ageAnchor.getTime()) / MS_PER_DAY));
+function hasUniqueWorkLabel(issue: IssueRecord): boolean {
+  return issueLabelNames(issue).some((label) => UNIQUE_WORK_LABEL_SET.has(label));
+}
 
-  return {
-    id: issue.id,
-    identifier: issue.identifier ?? null,
-    title: issue.title,
-    status: issue.status,
-    statusLabel: ISSUE_STATUS_LABELS[issue.status as keyof typeof ISSUE_STATUS_LABELS] ?? issue.status,
-    priority: issue.priority,
-    projectId: issue.projectId,
-    goalId: issue.goalId,
-    createdAt: toIsoString(issue.createdAt),
-    updatedAt: toIsoString(issue.updatedAt),
-    completedAt: toIsoString(issue.completedAt),
-    cancelledAt: toIsoString(issue.cancelledAt),
-    ageDays,
-    stale: issue.status !== "done" && !isCancelledIssue(issue) && ageDays >= STALE_AFTER_DAYS,
-    lastWeekUnfinished: false,
-    failedThisWeek: false,
-    matchedBy,
-  };
+function isCancelledIssue(issue: IssueRecord): boolean {
+  return issue.status === "cancelled" || parseDate(issue.cancelledAt) !== null;
 }
 
 function isDoneThisWeek(issue: IssueRecord, weekStart: Date): boolean {
@@ -238,7 +197,6 @@ function isLastWeekUnfinished(issue: IssueRecord, weekStart: Date): boolean {
 }
 
 function shouldIncludeIssueOnBoard(issue: IssueRecord, weekStart: Date): boolean {
-  // cancelled는 상태값/타임스탬프 어떤 형태로 표기돼도 보드에서 완전 제외한다.
   if (isCancelledIssue(issue)) return false;
   if (OPEN_STATUSES.has(issue.status)) return true;
   if (isDoneThisWeek(issue, weekStart)) return true;
@@ -246,36 +204,67 @@ function shouldIncludeIssueOnBoard(issue: IssueRecord, weekStart: Date): boolean
   return false;
 }
 
-function getBucketCount(stream: WorkstreamSnapshot, key: BoardBucketKey): number {
-  return stream.buckets.find((bucket) => bucket.key === key)?.count ?? 0;
+function resolveInheritedLabels(
+  issueId: string,
+  issueById: Map<string, IssueRecord>,
+  memo: Map<string, string[]>,
+  seen?: Set<string>,
+): string[] {
+  if (memo.has(issueId)) {
+    return memo.get(issueId) ?? [];
+  }
+
+  const issue = issueById.get(issueId);
+  if (!issue) {
+    memo.set(issueId, []);
+    return [];
+  }
+
+  const ownLabels = issueLabelNames(issue);
+  if (ownLabels.length > 0) {
+    memo.set(issueId, ownLabels);
+    return ownLabels;
+  }
+
+  const currentSeen = seen ?? new Set<string>();
+  if (currentSeen.has(issueId)) {
+    memo.set(issueId, []);
+    return [];
+  }
+
+  currentSeen.add(issueId);
+  const parentId = asString(issue.parentId);
+  if (!parentId || !issueById.has(parentId)) {
+    memo.set(issueId, []);
+    return [];
+  }
+
+  const inherited = resolveInheritedLabels(parentId, issueById, memo, currentSeen);
+  memo.set(issueId, inherited);
+  return inherited;
 }
 
-function shouldShowWorkstream(name: string, items: BoardIssueCard[]): boolean {
-  if (items.length > 0) return true;
-  return !DEFAULT_WORKSTREAM_NAMES.has(name);
-}
-
-function calculateTotals(workstreams: WorkstreamSnapshot[], unmatched: BoardIssueCard[]): WorkBoardSnapshot["totals"] {
-  const overdueLastWeek = workstreams.reduce((sum, stream) => sum + getBucketCount(stream, "overdueLastWeek"), 0);
-  const matchedTodo = workstreams.reduce((sum, stream) => sum + getBucketCount(stream, "todo"), 0);
-  const matchedInProgress = workstreams.reduce((sum, stream) => sum + getBucketCount(stream, "inProgress"), 0);
-  const unmatchedOverdue = unmatched.filter((item) => item.lastWeekUnfinished).length;
-  const unmatchedTodo = unmatched.filter((item) => !item.lastWeekUnfinished && TODO_STATUSES.has(item.status)).length;
-  const unmatchedInProgress = unmatched.filter((item) => !item.lastWeekUnfinished && IN_PROGRESS_STATUSES.has(item.status)).length;
-  const todo = matchedTodo + unmatchedTodo;
-  const inProgress = matchedInProgress + unmatchedInProgress;
-  const open = overdueLastWeek + unmatchedOverdue + todo + inProgress;
-  const doneThisWeek = workstreams.reduce((sum, stream) => sum + getBucketCount(stream, "doneThisWeek"), 0);
-  const stale = workstreams.reduce((sum, stream) => sum + stream.staleCount, 0) + unmatched.filter((item) => item.stale).length;
+function createIssueCard(issue: IssueRecord, effectiveLabels: string[], weekStart: Date, now = new Date()): BoardIssueCard {
+  const createdAt = parseDate(issue.createdAt);
+  const updatedAt = parseDate(issue.updatedAt) ?? createdAt;
+  const ageAnchor = updatedAt ?? createdAt ?? now;
+  const ageDays = Math.max(0, Math.floor((now.getTime() - ageAnchor.getTime()) / MS_PER_DAY));
 
   return {
-    open,
-    todo,
-    inProgress,
-    doneThisWeek,
-    stale,
-    unmatched: unmatched.length,
-    overdueLastWeek: overdueLastWeek + unmatchedOverdue,
+    id: issue.id,
+    identifier: issue.identifier ?? null,
+    title: issue.title,
+    status: issue.status,
+    statusLabel: ISSUE_STATUS_LABELS[issue.status as keyof typeof ISSUE_STATUS_LABELS] ?? issue.status,
+    priority: issue.priority,
+    parentId: issue.parentId ?? null,
+    effectiveLabels,
+    createdAt: toIsoString(issue.createdAt),
+    updatedAt: toIsoString(issue.updatedAt),
+    completedAt: toIsoString(issue.completedAt),
+    ageDays,
+    stale: issue.status !== "done" && ageDays >= STALE_AFTER_DAYS,
+    overdueFromLastWeek: isLastWeekUnfinished(issue, weekStart),
   };
 }
 
@@ -285,8 +274,9 @@ function comparePriority(left: BoardIssueCard, right: BoardIssueCard): number {
   return rightWeight - leftWeight;
 }
 
-function sortOpenIssues(items: BoardIssueCard[]): BoardIssueCard[] {
+function sortTaskIssues(items: BoardIssueCard[]): BoardIssueCard[] {
   return [...items].sort((left, right) => {
+    if (left.overdueFromLastWeek !== right.overdueFromLastWeek) return left.overdueFromLastWeek ? -1 : 1;
     if (left.stale !== right.stale) return left.stale ? -1 : 1;
     const priorityDiff = comparePriority(left, right);
     if (priorityDiff !== 0) return priorityDiff;
@@ -294,155 +284,193 @@ function sortOpenIssues(items: BoardIssueCard[]): BoardIssueCard[] {
   });
 }
 
-function sortDoneIssues(items: BoardIssueCard[]): BoardIssueCard[] {
-  return [...items].sort((left, right) => (right.completedAt ?? "").localeCompare(left.completedAt ?? ""));
-}
-
-function summarizeWorkstream(stream: WorkstreamDefinition, items: BoardIssueCard[]): WorkstreamSnapshot {
-  const overdueItems = sortOpenIssues(items.filter((item) => item.lastWeekUnfinished));
-  const todoItems = sortOpenIssues(
-    items.filter((item) => !item.lastWeekUnfinished && (TODO_STATUSES.has(item.status) || item.failedThisWeek)),
-  );
-  const inProgressItems = sortOpenIssues(
-    items.filter((item) => !item.lastWeekUnfinished && IN_PROGRESS_STATUSES.has(item.status)),
-  );
-  const doneItems = sortDoneIssues(items.filter((item) => item.status === "done"));
-  const openCount = overdueItems.length + todoItems.length + inProgressItems.length;
-  const staleCount = [...overdueItems, ...todoItems, ...inProgressItems].filter((item) => item.stale).length;
-
-  let healthTone: WorkstreamTone = "neutral";
-  let healthLabel = "이번 주 항목 없음";
-  let summary = "이번 주에 표시할 이슈가 아직 없다.";
-
-  if (overdueItems.length > 0) {
-    healthTone = "attention";
-    healthLabel = "지난주 미완료";
-    summary = `지난주에서 넘어온 미완료 ${overdueItems.length}건이 먼저 처리 대상이다.`;
-  } else if (openCount === 0 && doneItems.length > 0) {
-    healthTone = "complete";
-    healthLabel = "이번 주 완료";
-    summary = `이번 주 완료 ${doneItems.length}건. 열린 이슈는 없다.`;
-  } else if (staleCount > 0) {
-    healthTone = "attention";
-    healthLabel = "막힘 있음";
-    summary = `열린 이슈 ${openCount}건 중 ${staleCount}건이 ${STALE_AFTER_DAYS}일 이상 정체되어 있다.`;
-  } else if (inProgressItems.length > 0) {
-    healthTone = "progress";
-    healthLabel = "진행 중";
-    summary = `진행 중 ${inProgressItems.length}건, 아직 착수 전 ${todoItems.length}건.`;
-  } else if (todoItems.length > 0) {
-    healthTone = "attention";
-    healthLabel = "착수 필요";
-    summary = `이번 주에 시작해야 할 이슈 ${todoItems.length}건이 남아 있다.`;
+function bucketOfIssue(issue: BoardIssueCard): BoardBucketKey {
+  if (issue.status === "done") {
+    return "done";
   }
 
-  return {
-    id: stream.name,
-    name: stream.name,
-    description: stream.description,
-    healthLabel,
-    healthTone,
-    openCount,
-    doneThisWeekCount: doneItems.length,
-    staleCount,
-    summary,
-    buckets: [
-      {
-        key: "overdueLastWeek",
-        label: "지난주 미완료",
-        count: overdueItems.length,
-        items: overdueItems,
-      },
-      {
-        key: "todo",
-        label: "이번 주 해야 할",
-        count: todoItems.length,
-        items: todoItems,
-      },
-      {
-        key: "inProgress",
-        label: "진행 중",
-        count: inProgressItems.length,
-        items: inProgressItems,
-      },
-      {
-        key: "doneThisWeek",
-        label: "이번 주 완료",
-        count: doneItems.length,
-        items: doneItems,
-      },
-    ],
-  };
+  if (issue.overdueFromLastWeek) {
+    return "overdue";
+  }
+
+  if (IN_PROGRESS_STATUSES.has(issue.status)) {
+    return "inProgress";
+  }
+
+  return "todo";
+}
+
+function chooseMissionColumnName(
+  rootIssue: IssueRecord | null,
+  taskCards: BoardIssueCard[],
+  inheritedLabelByIssueId: Map<string, string[]>,
+): string {
+  if (rootIssue) {
+    const rootLabels = inheritedLabelByIssueId.get(rootIssue.id) ?? [];
+    if (rootLabels.length > 0) {
+      return rootLabels[0];
+    }
+  }
+
+  for (const card of taskCards) {
+    if (card.effectiveLabels.length > 0) {
+      return card.effectiveLabels[0];
+    }
+  }
+
+  return COLUMN_UNASSIGNED;
+}
+
+function missionTitle(rootIssue: IssueRecord | null, missionId: string, taskCards: BoardIssueCard[]): string {
+  if (rootIssue?.title) {
+    return rootIssue.title;
+  }
+
+  if (taskCards.length > 0) {
+    return taskCards[0].title;
+  }
+
+  return `Mission ${missionId.slice(0, 8)}`;
 }
 
 export function buildWorkBoardSnapshot(
   issues: IssueRecord[],
-  options?: { companyId?: string; now?: Date },
+  options: { companyId: string; now?: Date },
 ): WorkBoardSnapshot {
-  const now = options?.now ?? new Date();
+  const now = options.now ?? new Date();
   const weekStart = startOfWeekKst(now);
   const weekEnd = endOfWeekKst(weekStart);
-  const allowKeywordFallback = options?.companyId === DEFAULT_COMPANY_ID;
 
-  const grouped = new Map<string, BoardIssueCard[]>();
-  const unmatched: BoardIssueCard[] = [];
-  const discoveredStreams = new Map<string, WorkstreamDefinition>();
+  const scopedIssues = issues.filter((issue) => !hasUniqueWorkLabel(issue));
+  const issueById = new Map<string, IssueRecord>(scopedIssues.map((issue) => [issue.id, issue]));
+  const inheritedLabelByIssueId = new Map<string, string[]>();
 
-  // 기본 워크스트림 칼럼과 키워드 fallback은 Alpha-Prime 기본 회사에서만 사용한다.
-  if (allowKeywordFallback) {
-    for (const stream of WORKSTREAMS) {
-      grouped.set(stream.name, []);
-      discoveredStreams.set(stream.name, stream);
+  const candidateIssues = scopedIssues.filter((issue) => shouldIncludeIssueOnBoard(issue, weekStart));
+
+  const missionMembers = new Map<string, IssueRecord[]>();
+
+  for (const issue of candidateIssues) {
+    const parentId = asString(issue.parentId);
+    const missionId = parentId && issueById.has(parentId) ? parentId : issue.id;
+    const bucket = missionMembers.get(missionId);
+    if (bucket) {
+      bucket.push(issue);
+    } else {
+      missionMembers.set(missionId, [issue]);
     }
   }
 
-  for (const issue of issues) {
-    if (!shouldIncludeIssueOnBoard(issue, weekStart)) continue;
+  const missions: MissionCard[] = [];
 
-    // 1차: 이슈 라벨로 매칭 (동적 칼럼)
-    const labels = issue.labels ?? [];
-    let matched = false;
-    for (const label of labels) {
-      const labelName = label.name?.trim();
-      if (!labelName) continue;
-      if (!grouped.has(labelName)) {
-        grouped.set(labelName, []);
-        discoveredStreams.set(labelName, { name: labelName, description: "", keywords: [] });
-      }
-      const card = createIssueCard(issue, "label", now);
-      card.lastWeekUnfinished = isLastWeekUnfinished(issue, weekStart);
-      grouped.get(labelName)?.push(card);
-      matched = true;
-      break; // 첫 번째 라벨로만 분류
+  for (const [missionId, members] of missionMembers.entries()) {
+    const rootIssue = issueById.get(missionId) ?? null;
+
+    const hasChildren = members.some((member) => asString(member.parentId) === missionId);
+    let taskIssues = hasChildren
+      ? members.filter((member) => member.id !== missionId)
+      : members;
+
+    if (taskIssues.length === 0 && rootIssue) {
+      taskIssues = [rootIssue];
     }
 
-    if (matched) continue;
+    const taskCards = sortTaskIssues(taskIssues.map((issue) => {
+      const inheritedLabels = resolveInheritedLabels(issue.id, issueById, inheritedLabelByIssueId);
+      return createIssueCard(issue, inheritedLabels, weekStart, now);
+    }));
 
-    // 2차: 키워드 매칭 (WORKSTREAMS 기반)
-    const { stream, matchedBy } = classifyWorkstream(issue, { allowKeywordFallback });
-    const card = createIssueCard(issue, matchedBy ?? "keyword", now);
-    card.lastWeekUnfinished = isLastWeekUnfinished(issue, weekStart);
-    if (!stream || !matchedBy) {
-      if (issue.status !== "done") {
-        unmatched.push(card);
-      }
-      continue;
+    const columnName = chooseMissionColumnName(rootIssue, taskCards, inheritedLabelByIssueId);
+
+    const buckets: MissionBucket[] = [
+      { key: "overdue", label: "지난주 미완료", count: 0, items: [] },
+      { key: "todo", label: "이번 주 해야 할", count: 0, items: [] },
+      { key: "inProgress", label: "진행 중", count: 0, items: [] },
+      { key: "done", label: "완료", count: 0, items: [] },
+    ];
+
+    for (const card of taskCards) {
+      const key = bucketOfIssue(card);
+      const bucket = buckets.find((item) => item.key === key);
+      if (!bucket) continue;
+      bucket.items.push(card);
+      bucket.count += 1;
     }
-    grouped.get(stream.name)?.push(card);
+
+    const doneCount = buckets.find((item) => item.key === "done")?.count ?? 0;
+    const totalCount = taskCards.length;
+
+    missions.push({
+      missionId,
+      missionIssueId: rootIssue?.id ?? null,
+      missionIdentifier: rootIssue?.identifier ?? null,
+      title: missionTitle(rootIssue, missionId, taskCards),
+      columnName,
+      labels: inheritedLabelByIssueId.get(missionId) ?? [],
+      progress: {
+        total: totalCount,
+        done: doneCount,
+        percent: totalCount > 0 ? Math.round((doneCount / totalCount) * 100) : 0,
+      },
+      buckets,
+      updatedAt: toIsoString(rootIssue?.updatedAt ?? taskCards[0]?.updatedAt ?? null),
+    });
   }
 
-  // 이슈가 있는 칼럼만 표시 (빈 칼럼 숨김)
-  const workstreams = Array.from(grouped.entries())
-    .filter(([name, items]) => shouldShowWorkstream(name, items))
-    .map(([name, items]) => summarizeWorkstream(
-      discoveredStreams.get(name) ?? { name, description: "", keywords: [] },
-      items,
-    ));
-  const unmatchedSorted = sortOpenIssues(unmatched);
-  const totals = calculateTotals(workstreams, unmatchedSorted);
+  const columnsByName = new Map<string, MissionCard[]>();
+  for (const mission of missions) {
+    const key = mission.columnName || COLUMN_UNASSIGNED;
+    const bucket = columnsByName.get(key);
+    if (bucket) {
+      bucket.push(mission);
+    } else {
+      columnsByName.set(key, [mission]);
+    }
+  }
+
+  const columns: MissionColumn[] = Array.from(columnsByName.entries())
+    .map(([name, missionCards]) => ({
+      key: name,
+      name,
+      missionCount: missionCards.length,
+      missions: [...missionCards].sort((left, right) => {
+        const overdueDiff = (right.buckets.find((bucket) => bucket.key === "overdue")?.count ?? 0)
+          - (left.buckets.find((bucket) => bucket.key === "overdue")?.count ?? 0);
+        if (overdueDiff !== 0) return overdueDiff;
+
+        const inProgressDiff = (right.buckets.find((bucket) => bucket.key === "inProgress")?.count ?? 0)
+          - (left.buckets.find((bucket) => bucket.key === "inProgress")?.count ?? 0);
+        if (inProgressDiff !== 0) return inProgressDiff;
+
+        return left.title.localeCompare(right.title);
+      }),
+    }))
+    .sort((left, right) => {
+      if (left.name === COLUMN_UNASSIGNED) return 1;
+      if (right.name === COLUMN_UNASSIGNED) return -1;
+      return left.name.localeCompare(right.name);
+    });
+
+  const totals = {
+    missions: missions.length,
+    tasks: 0,
+    done: 0,
+    inProgress: 0,
+    todo: 0,
+    overdue: 0,
+  };
+
+  for (const mission of missions) {
+    for (const bucket of mission.buckets) {
+      totals.tasks += bucket.count;
+      if (bucket.key === "done") totals.done += bucket.count;
+      if (bucket.key === "inProgress") totals.inProgress += bucket.count;
+      if (bucket.key === "todo") totals.todo += bucket.count;
+      if (bucket.key === "overdue") totals.overdue += bucket.count;
+    }
+  }
 
   return {
-    companyId: options?.companyId ?? "",
+    companyId: options.companyId,
     generatedAt: now.toISOString(),
     weekRange: {
       start: weekStart.toISOString(),
@@ -450,8 +478,7 @@ export function buildWorkBoardSnapshot(
       label: formatWeekRangeLabel(weekStart, weekEnd),
     },
     totals,
-    workstreams,
-    unmatched: unmatchedSorted,
+    columns,
   };
 }
 
@@ -463,7 +490,28 @@ async function loadBoardSnapshot(ctx: PluginContext, companyId: string): Promise
 const plugin = definePlugin({
   async setup(ctx) {
     ctx.data.register("work-board-overview", async (params) => {
-      const companyId = getCompanyId(params);
+      const companyId = getCompanyId(ctx, params);
+      if (!companyId) {
+        return {
+          companyId: "",
+          generatedAt: new Date().toISOString(),
+          weekRange: {
+            start: new Date().toISOString(),
+            end: new Date().toISOString(),
+            label: "",
+          },
+          totals: {
+            missions: 0,
+            tasks: 0,
+            done: 0,
+            inProgress: 0,
+            todo: 0,
+            overdue: 0,
+          },
+          columns: [],
+        } satisfies WorkBoardSnapshot;
+      }
+
       return await loadBoardSnapshot(ctx, companyId);
     });
   },
@@ -473,7 +521,7 @@ const plugin = definePlugin({
       status: "ok",
       message: `${PLUGIN_DISPLAY_NAME} worker ready`,
       details: {
-        workstreams: WORKSTREAMS.length,
+        mode: "mission-first",
       },
     };
   },
