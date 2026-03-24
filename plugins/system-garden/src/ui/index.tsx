@@ -317,9 +317,15 @@ export function SystemGardenPage({ context }: PluginPageProps) {
       const cytoscape = await loadCytoscape();
       if (disposed || !graphRef.current) return;
 
+      const elements = buildElements(filteredGraph.nodes, filteredGraph.edges);
+      if (elements.length === 0) {
+        // 빈 그래프 — Cytoscape 인스턴스 생성하지 않음
+        return;
+      }
+
       instance = cytoscape({
         container: graphRef.current,
-        elements: buildElements(filteredGraph.nodes, filteredGraph.edges),
+        elements,
         style: [
           {
             selector: "node",
