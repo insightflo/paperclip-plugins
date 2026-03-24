@@ -11,6 +11,9 @@ import {
 const capabilities = [
   "issues.read",
   "agents.read",
+  "events.subscribe",
+  "plugin.state.read",
+  "plugin.state.write",
   "ui.page.register",
   "ui.sidebar.register",
 ] as unknown as PaperclipPluginManifestV1["capabilities"];

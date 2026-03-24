@@ -672,6 +672,45 @@ async function buildPageData(
   };
 }
 
+type ToolGraphUpdatedTool = {
+  name: string;
+  displayName: string;
+  description: string;
+  command: string;
+};
+
+type ToolGraphUpdatedGrant = {
+  agentName: string;
+  toolName: string;
+};
+
+type ToolGraphUpdatedPayload = {
+  tools: ToolGraphUpdatedTool[];
+  grants: ToolGraphUpdatedGrant[];
+};
+
+async function emitToolGraphUpdated(ctx: PluginContext, companyId: string): Promise<void> {
+  const [tools, grants] = await Promise.all([
+    listTools(ctx, companyId),
+    listAgentGrants(ctx, companyId),
+  ]);
+
+  const payload: ToolGraphUpdatedPayload = {
+    tools: tools.map((tool) => ({
+      name: tool.data.name,
+      displayName: tool.title ?? tool.data.name,
+      description: tool.data.description ?? "",
+      command: tool.data.command,
+    })),
+    grants: grants.map((grant) => ({
+      agentName: grant.data.agentName,
+      toolName: grant.data.toolName,
+    })),
+  };
+
+  await ctx.events.emit("tool-graph-updated", companyId, payload);
+}
+
 async function registerDataHandlers(ctx: PluginContext): Promise<void> {
   ctx.data.register(DATA_KEYS.pageData, async (rawParams) => {
     const params = asRecord(rawParams);
@@ -685,7 +724,7 @@ async function registerActionHandlers(ctx: PluginContext): Promise<void> {
     const companyId = await resolveCompanyId(ctx, params);
     const toolInput = asRecord(params.tool);
 
-    return await createTool(ctx, companyId, {
+    const created = await createTool(ctx, companyId, {
       name: asString(toolInput.name),
       command: asString(toolInput.command),
       workingDirectory: asString(toolInput.workingDirectory) || undefined,
@@ -695,6 +734,8 @@ async function registerActionHandlers(ctx: PluginContext): Promise<void> {
       argsSchema: asRecord(toolInput.argsSchema),
       createdBy: asString(params.actorName) || "tool-registry-ui",
     });
+    await emitToolGraphUpdated(ctx, companyId);
+    return created;
   });
 
   ctx.actions.register(ACTION_KEYS.updateTool, async (rawParams) => {
@@ -728,7 +769,7 @@ async function registerActionHandlers(ctx: PluginContext): Promise<void> {
       patchData.argsSchema = patch.argsSchema;
     }
 
-    return await updateTool(ctx, companyId, toolName, {
+    const updated = await updateTool(ctx, companyId, toolName, {
       ...(patchData as Partial<{
         command: string;
         workingDirectory: string;
@@ -738,6 +779,8 @@ async function registerActionHandlers(ctx: PluginContext): Promise<void> {
         argsSchema: Record<string, unknown>;
       }>),
     });
+    await emitToolGraphUpdated(ctx, companyId);
+    return updated;
   });
 
   ctx.actions.register(ACTION_KEYS.deleteTool, async (rawParams) => {
@@ -746,6 +789,7 @@ async function registerActionHandlers(ctx: PluginContext): Promise<void> {
     const toolName = asString(params.toolName);
 
     await deleteTool(ctx, companyId, toolName);
+    await emitToolGraphUpdated(ctx, companyId);
     return {
       ok: true,
       toolName,
@@ -756,11 +800,13 @@ async function registerActionHandlers(ctx: PluginContext): Promise<void> {
     const params = asRecord(rawParams);
     const companyId = await resolveCompanyId(ctx, params);
 
-    return await grantTool(ctx, companyId, {
+    const granted = await grantTool(ctx, companyId, {
       agentName: asString(params.agentName),
       toolName: asString(params.toolName),
       grantedBy: asString(params.grantedBy) || "tool-registry-ui",
     });
+    await emitToolGraphUpdated(ctx, companyId);
+    return granted;
   });
 
   ctx.actions.register(ACTION_KEYS.revokeTool, async (rawParams) => {
@@ -770,6 +816,7 @@ async function registerActionHandlers(ctx: PluginContext): Promise<void> {
     const toolName = asString(params.toolName);
 
     await revokeTool(ctx, companyId, agentName, toolName);
+    await emitToolGraphUpdated(ctx, companyId);
     return {
       ok: true,
       agentName,

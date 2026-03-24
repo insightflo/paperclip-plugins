@@ -1,4 +1,4 @@
-import { definePlugin, runWorker, type PluginContext } from "@paperclipai/plugin-sdk";
+import { definePlugin, runWorker, type PluginContext, type PluginEvent } from "@paperclipai/plugin-sdk";
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import { HEALTH_LABELS, HEALTH_THRESHOLDS, PLUGIN_DISPLAY_NAME } from "./constants.js";
@@ -22,6 +22,8 @@ export type GardenSnapshot = {
 };
 
 const UA_KG_PATH_ENV = "SYSTEM_GARDEN_KG_PATH";
+const TOOL_GRAPH_CACHE_STATE_KEY = "tool-graph-cache";
+const TOOL_GRAPH_UPDATED_EVENT = "plugin.insightflo.tool-registry.tool-graph-updated";
 
 type UaGraphNode = {
   id?: unknown;
@@ -48,7 +50,27 @@ type UaKnowledgeGraph = {
   edges?: unknown;
 };
 
-export type GraphNodeKind = "agent" | "module" | "file" | "function" | "class";
+type CodeLayerSource = "knowledge-graph" | "tool-registry" | "none";
+
+type ToolGraphUpdatedTool = {
+  name?: unknown;
+  displayName?: unknown;
+  description?: unknown;
+  command?: unknown;
+};
+
+type ToolGraphUpdatedGrant = {
+  agentName?: unknown;
+  toolName?: unknown;
+};
+
+type ToolGraphCache = {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+  updatedAt: string;
+};
+
+export type GraphNodeKind = "agent" | "module" | "file" | "function" | "class" | "tool";
 export type GraphNode = {
   id: string;
   label: string;
@@ -201,6 +223,204 @@ function resolveUaKnowledgeGraphPath(): string {
 
 function toNonEmptyString(value: unknown): string {
   return typeof value === "string" ? value.trim() : "";
+}
+
+function getCodeLayerSource(params: Record<string, unknown>): CodeLayerSource {
+  const raw = toNonEmptyString(params.codeLayerSource).toLowerCase();
+  if (raw === "none") return "none";
+  if (raw === "tool-registry") return "tool-registry";
+  return "knowledge-graph";
+}
+
+function normalizeGraphNodeKind(value: unknown): GraphNodeKind {
+  const kind = toNonEmptyString(value).toLowerCase();
+  if (kind === "agent" || kind === "module" || kind === "file" || kind === "function" || kind === "class" || kind === "tool") {
+    return kind;
+  }
+  return "module";
+}
+
+function toGraphNode(value: unknown): GraphNode | null {
+  const record = toRecord(value);
+  if (!record) return null;
+  const id = toNonEmptyString(record.id);
+  if (!id) return null;
+
+  const label = toNonEmptyString(record.label) || id;
+  return {
+    id,
+    label,
+    kind: normalizeGraphNodeKind(record.kind),
+    status: toNonEmptyString(record.status) || "code",
+    role: toNonEmptyString(record.role) || "tool",
+    summary: toNonEmptyString(record.summary) || undefined,
+    complexity: toNonEmptyString(record.complexity) || undefined,
+    layer: toNonEmptyString(record.layer) || undefined,
+  };
+}
+
+function toGraphEdge(value: unknown): GraphEdge | null {
+  const record = toRecord(value);
+  if (!record) return null;
+  const source = toNonEmptyString(record.source);
+  const target = toNonEmptyString(record.target);
+  if (!source || !target) return null;
+  return {
+    source,
+    target,
+    label: toNonEmptyString(record.label) || "uses",
+  };
+}
+
+function normalizeToolGraphPayload(payload: unknown): { tools: ToolGraphUpdatedTool[]; grants: ToolGraphUpdatedGrant[] } {
+  const record = toRecord(payload);
+  const rawTools = Array.isArray(record?.tools) ? record.tools : [];
+  const rawGrants = Array.isArray(record?.grants) ? record.grants : [];
+
+  const tools = rawTools
+    .map((item) => toRecord(item) as ToolGraphUpdatedTool | null)
+    .filter((item): item is ToolGraphUpdatedTool => item != null)
+    .filter((item) => toNonEmptyString(item.name).length > 0);
+
+  const grants = rawGrants
+    .map((item) => toRecord(item) as ToolGraphUpdatedGrant | null)
+    .filter((item): item is ToolGraphUpdatedGrant => item != null)
+    .filter((item) => toNonEmptyString(item.agentName).length > 0 && toNonEmptyString(item.toolName).length > 0);
+
+  return { tools, grants };
+}
+
+function toolNodeId(name: string): string {
+  return `tool:${name}`;
+}
+
+function buildToolRegistryGraph(
+  tools: ToolGraphUpdatedTool[],
+  grants: ToolGraphUpdatedGrant[],
+  agents: AgentRecord[],
+): { nodes: GraphNode[]; edges: GraphEdge[] } {
+  const nodesById = new Map<string, GraphNode>();
+  const toolIdByName = new Map<string, string>();
+
+  const setToolNameIndex = (toolName: string, nodeId: string) => {
+    toolIdByName.set(toolName, nodeId);
+    toolIdByName.set(toolName.toLowerCase(), nodeId);
+  };
+
+  const upsertToolNode = (toolName: string, displayName?: string, description?: string): string => {
+    const nodeId = toolNodeId(toolName);
+    setToolNameIndex(toolName, nodeId);
+    if (!nodesById.has(nodeId)) {
+      nodesById.set(nodeId, {
+        id: nodeId,
+        label: toNonEmptyString(displayName) || toolName,
+        kind: "tool",
+        status: "code",
+        role: "tool",
+        summary: toNonEmptyString(description) || undefined,
+        layer: "tool-registry",
+      });
+    } else if (description && !nodesById.get(nodeId)?.summary) {
+      const current = nodesById.get(nodeId);
+      if (current) {
+        current.summary = toNonEmptyString(description) || undefined;
+      }
+    }
+    return nodeId;
+  };
+
+  for (const tool of tools) {
+    const toolName = toNonEmptyString(tool.name);
+    if (!toolName) continue;
+    upsertToolNode(toolName, toNonEmptyString(tool.displayName), toNonEmptyString(tool.description));
+  }
+
+  const agentIdByName = new Map<string, string>();
+  for (const agent of agents) {
+    const name = toNonEmptyString(agent.name);
+    if (!name) continue;
+    agentIdByName.set(name, agent.id);
+    agentIdByName.set(name.toLowerCase(), agent.id);
+  }
+
+  const edges: GraphEdge[] = [];
+  const seenEdges = new Set<string>();
+  for (const grant of grants) {
+    const agentName = toNonEmptyString(grant.agentName);
+    const toolName = toNonEmptyString(grant.toolName);
+    if (!agentName || !toolName) continue;
+
+    const agentId = agentIdByName.get(agentName) ?? agentIdByName.get(agentName.toLowerCase());
+    if (!agentId) continue;
+
+    const toolId = toolIdByName.get(toolName)
+      ?? toolIdByName.get(toolName.toLowerCase())
+      ?? upsertToolNode(toolName, toolName, "");
+
+    const edgeKey = `${agentId}->${toolId}:uses`;
+    if (seenEdges.has(edgeKey)) continue;
+    seenEdges.add(edgeKey);
+    edges.push({ source: agentId, target: toolId, label: "uses" });
+  }
+
+  return {
+    nodes: Array.from(nodesById.values()),
+    edges,
+  };
+}
+
+async function readToolGraphCache(context: PluginContext, companyId: string): Promise<{ nodes: GraphNode[]; edges: GraphEdge[] }> {
+  const cached = await context.state.get({
+    scopeKind: "company",
+    scopeId: companyId,
+    stateKey: TOOL_GRAPH_CACHE_STATE_KEY,
+  });
+
+  const record = toRecord(cached);
+  if (!record) return { nodes: [], edges: [] };
+  const rawNodes = Array.isArray(record.nodes) ? record.nodes : [];
+  const rawEdges = Array.isArray(record.edges) ? record.edges : [];
+
+  const nodes = rawNodes
+    .map((node) => toGraphNode(node))
+    .filter((node): node is GraphNode => node != null);
+  const edges = rawEdges
+    .map((edge) => toGraphEdge(edge))
+    .filter((edge): edge is GraphEdge => edge != null);
+
+  return { nodes, edges };
+}
+
+async function cacheToolGraph(context: PluginContext, companyId: string, graph: { nodes: GraphNode[]; edges: GraphEdge[] }): Promise<void> {
+  const payload: ToolGraphCache = {
+    nodes: graph.nodes,
+    edges: graph.edges,
+    updatedAt: new Date().toISOString(),
+  };
+  await context.state.set(
+    {
+      scopeKind: "company",
+      scopeId: companyId,
+      stateKey: TOOL_GRAPH_CACHE_STATE_KEY,
+    },
+    payload,
+  );
+}
+
+async function handleToolGraphUpdatedEvent(context: PluginContext, event: PluginEvent): Promise<void> {
+  const companyId = toNonEmptyString(event.companyId);
+  if (!companyId) return;
+
+  const payload = normalizeToolGraphPayload(event.payload);
+  const agents = await context.agents.list({ companyId, limit: 300, offset: 0 });
+  const graph = buildToolRegistryGraph(payload.tools, payload.grants, agents);
+  await cacheToolGraph(context, companyId, graph);
+
+  context.logger.info("Updated tool graph cache from tool-registry event", {
+    companyId,
+    toolNodes: graph.nodes.length,
+    grantEdges: graph.edges.length,
+  });
 }
 
 function normalizeCodeNodeKind(rawKind: string): GraphNodeKind {
@@ -510,18 +730,26 @@ function buildAgentDetailSnapshot(
 
 export async function buildGardenSnapshot(
   context: PluginContext,
-  input: { companyId: string; now?: Date },
+  input: { companyId: string; now?: Date; codeLayerSource?: CodeLayerSource },
 ): Promise<GardenSnapshot> {
   const now = input.now ?? new Date();
-  const [agents, issues, knowledgeGraph] = await Promise.all([
+  const codeLayerSource = input.codeLayerSource ?? "knowledge-graph";
+
+  const [agents, issues] = await Promise.all([
     context.agents.list({ companyId: input.companyId, limit: 300, offset: 0 }),
     context.issues.list({ companyId: input.companyId, limit: 1200, offset: 0 }),
-    loadUaKnowledgeGraph(context),
   ]);
+
+  let codeGraph: { nodes: GraphNode[]; edges: GraphEdge[] } = { nodes: [], edges: [] };
+  if (codeLayerSource === "knowledge-graph") {
+    const knowledgeGraph = await loadUaKnowledgeGraph(context);
+    codeGraph = buildCodeGraph(knowledgeGraph);
+  } else if (codeLayerSource === "tool-registry") {
+    codeGraph = await readToolGraphCache(context, input.companyId);
+  }
 
   const issuesByAgent = mapIssuesByAgent(issues);
   const agentGraph = buildGraph(agents);
-  const codeGraph = buildCodeGraph(knowledgeGraph);
   const graph = mergeGraphs(agentGraph, codeGraph);
   const cards = buildHealthCards(agents, issuesByAgent);
   const questions = buildMetaQuestions(agents, issuesByAgent, now);
@@ -540,12 +768,15 @@ export async function buildGardenSnapshot(
 
 const plugin = definePlugin({
   async setup(context) {
-    context.data.register("system-garden-snapshot", async (params) => {
+    context.data.register("system-garden-snapshot", async (rawParams) => {
+      const params = toRecord(rawParams) ?? {};
       const companyId = getCompanyId(params);
-      return await buildGardenSnapshot(context, { companyId });
+      const codeLayerSource = getCodeLayerSource(params);
+      return await buildGardenSnapshot(context, { companyId, codeLayerSource });
     });
 
-    context.data.register("system-garden-agent-detail", async (params) => {
+    context.data.register("system-garden-agent-detail", async (rawParams) => {
+      const params = toRecord(rawParams) ?? {};
       const companyId = getCompanyId(params);
       const agentId = getAgentId(params);
       if (!companyId || !agentId) return null;
@@ -556,6 +787,10 @@ const plugin = definePlugin({
       ]);
 
       return buildAgentDetailSnapshot(agents, issues, agentId);
+    });
+
+    context.events.on(TOOL_GRAPH_UPDATED_EVENT, async (event) => {
+      await handleToolGraphUpdatedEvent(context, event);
     });
   },
 

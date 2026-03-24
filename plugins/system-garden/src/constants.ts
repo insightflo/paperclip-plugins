@@ -22,6 +22,7 @@ export const NODE_COLORS = {
   file: "#3b82f6",
   function: "#a855f7",
   class: "#f97316",
+  tool: "#f59e0b",
   default: "#64748b",
 } as const;
 

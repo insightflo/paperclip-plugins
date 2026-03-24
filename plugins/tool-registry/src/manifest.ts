@@ -10,6 +10,7 @@ import {
 
 const capabilities = [
   "events.subscribe",
+  "events.emit",
   "issues.read",
   "issues.create",
   "issue.comments.create",

@@ -224,4 +224,55 @@ describe("system-garden plugin", () => {
       await rm(tempDir, { recursive: true, force: true });
     }
   });
+
+  it("caches tool-registry graph events and injects them when source is tool-registry", async () => {
+    const harness = createTestHarness({ manifest });
+    await plugin.definition.setup(harness.ctx);
+
+    const engineer = makeAgent({ id: "agent-eng", name: "Engineer", role: "engineer", urlKey: "engineer" });
+    harness.seed({ agents: [engineer], issues: [] });
+
+    await harness.emit(
+      "plugin.insightflo.tool-registry.tool-graph-updated",
+      {
+        tools: [
+          {
+            name: "git-status",
+            displayName: "Git Status",
+            description: "Show current git status",
+            command: "git status",
+          },
+        ],
+        grants: [
+          {
+            agentName: "Engineer",
+            toolName: "git-status",
+          },
+        ],
+      },
+      { companyId: COMPANY_ID },
+    );
+
+    const toolGraphSnapshot = await harness.getData<import("../src/worker.js").GardenSnapshot>("system-garden-snapshot", {
+      companyId: COMPANY_ID,
+      codeLayerSource: "tool-registry",
+    });
+
+    expect(toolGraphSnapshot.graph.nodes.map((node) => node.id)).toContain("tool:git-status");
+    expect(toolGraphSnapshot.graph.nodes.find((node) => node.id === "tool:git-status")?.kind).toBe("tool");
+    expect(toolGraphSnapshot.graph.edges).toEqual(expect.arrayContaining([
+      {
+        source: engineer.id,
+        target: "tool:git-status",
+        label: "uses",
+      },
+    ]));
+
+    const noCodeSnapshot = await harness.getData<import("../src/worker.js").GardenSnapshot>("system-garden-snapshot", {
+      companyId: COMPANY_ID,
+      codeLayerSource: "none",
+    });
+
+    expect(noCodeSnapshot.graph.nodes.find((node) => node.id === "tool:git-status")).toBeFalsy();
+  });
 });
