@@ -19,7 +19,6 @@ const capabilities = [
   "plugin.state.read",
   "plugin.state.write",
   "agent.tools.register",
-  "tools.provide",
   "ui.page.register",
 ] as unknown as PaperclipPluginManifestV1["capabilities"];
 

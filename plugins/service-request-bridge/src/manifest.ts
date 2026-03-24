@@ -16,22 +16,23 @@ const capabilities = [
   "plugin.state.read",
   "plugin.state.write",
   "ui.dashboardWidget.register",
-  "ui.issueListTab.register",
-  "ui.issueDetailTab.register",
+  "ui.page.register",
+  "ui.detailTab.register",
 ] as unknown as PaperclipPluginManifestV1["capabilities"];
 
 const slots = [
   {
-    type: "issueListTab",
+    type: "page",
     id: SLOT_IDS.listTab,
     displayName: "Service Bridge",
     exportName: EXPORT_NAMES.listTab,
   },
   {
-    type: "issueDetailTab",
+    type: "detailTab",
     id: SLOT_IDS.detailTab,
     displayName: "Service Bridge",
     exportName: EXPORT_NAMES.detailTab,
+    entityTypes: ["issue"],
   },
   {
     type: "dashboardWidget",
