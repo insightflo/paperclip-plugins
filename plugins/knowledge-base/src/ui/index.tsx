@@ -63,7 +63,7 @@ const pageStyle: CSSProperties = {
   gap: "20px",
   padding: "24px",
   fontFamily: "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
-  color: "#111827",
+  color: "var(--foreground, #f8fafc)",
 };
 
 const sectionStyle: CSSProperties = {
@@ -71,8 +71,8 @@ const sectionStyle: CSSProperties = {
   gap: "12px",
   padding: "16px",
   borderRadius: "12px",
-  border: "1px solid #e5e7eb",
-  background: "#ffffff",
+  border: "1px solid var(--border, #334155)",
+  background: "var(--card, #0f172a)",
 };
 
 const titleStyle: CSSProperties = {
@@ -92,7 +92,7 @@ const sectionTitleStyle: CSSProperties = {
 const mutedStyle: CSSProperties = {
   margin: 0,
   fontSize: "13px",
-  color: "#6b7280",
+  color: "var(--muted-foreground, #94a3b8)",
 };
 
 const tableStyle: CSSProperties = {
@@ -104,24 +104,24 @@ const tableStyle: CSSProperties = {
 const thStyle: CSSProperties = {
   textAlign: "left",
   padding: "10px 12px",
-  borderBottom: "1px solid #e5e7eb",
+  borderBottom: "1px solid var(--border, #334155)",
   fontSize: "12px",
   letterSpacing: "0.03em",
-  color: "#6b7280",
+  color: "var(--muted-foreground, #94a3b8)",
   textTransform: "uppercase",
 };
 
 const tdStyle: CSSProperties = {
   padding: "10px 12px",
-  borderBottom: "1px solid #f3f4f6",
+  borderBottom: "1px solid var(--border, #1e293b)",
   verticalAlign: "top",
 };
 
 const buttonStyle: CSSProperties = {
-  border: "1px solid #d1d5db",
+  border: "1px solid var(--border, #334155)",
   borderRadius: "8px",
-  background: "#ffffff",
-  color: "#111827",
+  background: "var(--card, #0f172a)",
+  color: "var(--foreground, #f8fafc)",
   fontSize: "13px",
   fontWeight: 600,
   cursor: "pointer",
@@ -130,7 +130,7 @@ const buttonStyle: CSSProperties = {
 
 const inputStyle: CSSProperties = {
   width: "100%",
-  border: "1px solid #d1d5db",
+  border: "1px solid var(--border, #334155)",
   borderRadius: "8px",
   padding: "8px 10px",
   fontSize: "14px",

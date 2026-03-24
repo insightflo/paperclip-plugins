@@ -86,15 +86,15 @@ const pageStyle: CSSProperties = {
   gap: "20px",
   padding: "24px",
   fontFamily: "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
-  color: "#111827",
+  color: "var(--foreground, #f8fafc)",
 };
 
 const cardStyle: CSSProperties = {
   display: "grid",
   gap: "12px",
-  border: "1px solid #e5e7eb",
+  border: "1px solid var(--border, #334155)",
   borderRadius: "12px",
-  background: "#ffffff",
+  background: "var(--card, #0f172a)",
   padding: "16px",
 };
 
@@ -123,7 +123,7 @@ const mutedTextStyle: CSSProperties = {
   margin: 0,
   fontSize: "13px",
   lineHeight: 1.4,
-  color: "#6b7280",
+  color: "var(--muted-foreground, #94a3b8)",
 };
 
 const gridCols2Style: CSSProperties = {
@@ -135,17 +135,17 @@ const gridCols2Style: CSSProperties = {
 const inputStyle: CSSProperties = {
   width: "100%",
   padding: "8px 10px",
-  border: "1px solid #d1d5db",
+  border: "1px solid var(--border, #334155)",
   borderRadius: "8px",
   fontSize: "13px",
 };
 
 const buttonStyle: CSSProperties = {
   padding: "8px 12px",
-  border: "1px solid #d1d5db",
+  border: "1px solid var(--border, #334155)",
   borderRadius: "8px",
-  background: "#ffffff",
-  color: "#111827",
+  background: "var(--card, #0f172a)",
+  color: "var(--foreground, #f8fafc)",
   cursor: "pointer",
   fontSize: "13px",
 };
@@ -154,7 +154,7 @@ const primaryButtonStyle: CSSProperties = {
   ...buttonStyle,
   background: "#111827",
   color: "#ffffff",
-  borderColor: "#111827",
+  borderColor: "var(--foreground, #f8fafc)",
 };
 
 const tableStyle: CSSProperties = {
@@ -164,17 +164,17 @@ const tableStyle: CSSProperties = {
 };
 
 const thStyle: CSSProperties = {
-  borderBottom: "1px solid #e5e7eb",
+  borderBottom: "1px solid var(--border, #334155)",
   textAlign: "left",
   padding: "8px 10px",
   fontSize: "11px",
   textTransform: "uppercase",
-  color: "#6b7280",
+  color: "var(--muted-foreground, #94a3b8)",
   letterSpacing: "0.04em",
 };
 
 const tdStyle: CSSProperties = {
-  borderBottom: "1px solid #f3f4f6",
+  borderBottom: "1px solid var(--border, #1e293b)",
   padding: "9px 10px",
   verticalAlign: "top",
 };

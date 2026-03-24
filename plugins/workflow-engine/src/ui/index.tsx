@@ -30,16 +30,16 @@ const pageStyle: CSSProperties = {
   gap: "20px",
   padding: "24px",
   fontFamily: "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
-  color: "#111827",
+  color: "var(--foreground, #f8fafc)",
 };
 
 const sectionStyle: CSSProperties = {
   display: "grid",
   gap: "12px",
   padding: "16px",
-  border: "1px solid #e5e7eb",
+  border: "1px solid var(--border, #334155)",
   borderRadius: "12px",
-  background: "#ffffff",
+  background: "var(--card, #0f172a)",
 };
 
 const headerRowStyle: CSSProperties = {
@@ -65,7 +65,7 @@ const sectionTitleStyle: CSSProperties = {
 
 const mutedTextStyle: CSSProperties = {
   margin: 0,
-  color: "#6b7280",
+  color: "var(--muted-foreground, #94a3b8)",
   fontSize: "14px",
   lineHeight: 1.5,
 };
@@ -78,18 +78,18 @@ const tableStyle: CSSProperties = {
 
 const thStyle: CSSProperties = {
   padding: "10px 12px",
-  borderBottom: "1px solid #e5e7eb",
+  borderBottom: "1px solid var(--border, #334155)",
   textAlign: "left",
   fontSize: "12px",
   fontWeight: 600,
   letterSpacing: "0.04em",
   textTransform: "uppercase",
-  color: "#6b7280",
+  color: "var(--muted-foreground, #94a3b8)",
 };
 
 const tdStyle: CSSProperties = {
   padding: "12px",
-  borderBottom: "1px solid #f3f4f6",
+  borderBottom: "1px solid var(--border, #1e293b)",
   verticalAlign: "top",
 };
 
@@ -97,11 +97,11 @@ const widgetStyle: CSSProperties = {
   display: "grid",
   gap: "10px",
   padding: "14px",
-  border: "1px solid #e5e7eb",
+  border: "1px solid var(--border, #334155)",
   borderRadius: "12px",
-  background: "#ffffff",
+  background: "var(--card, #0f172a)",
   fontFamily: "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
-  color: "#111827",
+  color: "var(--foreground, #f8fafc)",
 };
 
 const widgetTitleStyle: CSSProperties = {
@@ -125,10 +125,10 @@ const badgeRowStyle: CSSProperties = {
 
 const buttonStyle: CSSProperties = {
   padding: "8px 12px",
-  border: "1px solid #d1d5db",
+  border: "1px solid var(--border, #334155)",
   borderRadius: "8px",
-  background: "#ffffff",
-  color: "#111827",
+  background: "var(--card, #0f172a)",
+  color: "var(--foreground, #f8fafc)",
   cursor: "pointer",
   fontSize: "13px",
 };
