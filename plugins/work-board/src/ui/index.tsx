@@ -185,10 +185,10 @@ function IssueTile({ companyPrefix, issue }: { companyPrefix: string | null | un
 }
 
 function bucketAccent(key: string) {
-  if (key === "overdue") {
+  if (key === "delayed") {
     return { color: "#ef4444", background: "color-mix(in srgb, #ef4444 10%, transparent)" };
   }
-  if (key === "todo") {
+  if (key === "waiting") {
     return { color: "#f59e0b", background: "color-mix(in srgb, #f59e0b 10%, transparent)" };
   }
   if (key === "inProgress") {
@@ -397,8 +397,8 @@ function BoardContent({
         <div style={metricsGridStyle}>
           <MetricCard label="미션 수" value={data.columns.filter((c) => c.key !== COLUMN_UNASSIGNED).reduce((sum, c) => sum + c.missionCount, 0)} helper="이번 주 추적 중인 미션 (미분류 제외)" accent="#0ea5e9" />
           <MetricCard label="전체 태스크" value={data.totals.tasks} helper="미션에 포함된 작업 수" accent="#6366f1" />
-          <MetricCard label="진행/예정" value={`${data.totals.inProgress + data.totals.todo}`} helper="진행 중 + 해야 할" accent="#f59e0b" />
-          <MetricCard label="지난주 미완료" value={data.totals.overdue} helper={data.weekRange.label} accent="#ef4444" />
+          <MetricCard label="대기" value={data.totals.todo} helper="대기 중인 태스크" accent="#f59e0b" />
+          <MetricCard label="지연" value={data.totals.overdue} helper="N일 이상 미처리" accent="#ef4444" />
         </div>
       </section>
 
@@ -475,7 +475,7 @@ export function WorkBoardDashboardWidget({ context }: PluginWidgetProps) {
       <div style={tinyMutedStyle}>{board.data.weekRange.label}</div>
       <div style={{ display: "grid", gap: "6px" }}>
         <div style={tinyMutedStyle}>미션 {board.data.totals.missions} · 태스크 {board.data.totals.tasks}</div>
-        <div style={tinyMutedStyle}>지난주 미완료 {board.data.totals.overdue} · 진행 {board.data.totals.inProgress} · 할 일 {board.data.totals.todo} · 완료 {board.data.totals.done}</div>
+        <div style={tinyMutedStyle}>지연 {board.data.totals.overdue} · 진행 {board.data.totals.inProgress} · 대기 {board.data.totals.todo} · 완료 {board.data.totals.done}</div>
       </div>
       <div style={{ display: "grid", gap: "8px" }}>
         {board.data.columns.slice(0, 3).map((column) => (

@@ -7,7 +7,7 @@ import {
   UNIQUE_WORK_LABELS,
 } from "./constants.js";
 
-type BoardBucketKey = "overdue" | "todo" | "inProgress" | "done";
+type BoardBucketKey = "delayed" | "waiting" | "inProgress" | "done";
 type IssueRecord = Awaited<ReturnType<PluginContext["issues"]["list"]>>[number];
 type JsonRecord = Record<string, unknown>;
 
@@ -289,15 +289,16 @@ function bucketOfIssue(issue: BoardIssueCard): BoardBucketKey {
     return "done";
   }
 
-  if (issue.overdueFromLastWeek) {
-    return "overdue";
-  }
-
   if (IN_PROGRESS_STATUSES.has(issue.status)) {
     return "inProgress";
   }
 
-  return "todo";
+  // 지연: 완료되지 않은 이슈가 N일(STALE_AFTER_DAYS) 이상 경과
+  if (issue.stale || issue.overdueFromLastWeek) {
+    return "delayed";
+  }
+
+  return "waiting";
 }
 
 function chooseMissionColumnName(
@@ -382,8 +383,8 @@ export function buildWorkBoardSnapshot(
     const columnName = chooseMissionColumnName(rootIssue, taskCards, inheritedLabelByIssueId);
 
     const buckets: MissionBucket[] = [
-      { key: "overdue", label: "지난주 미완료", count: 0, items: [] },
-      { key: "todo", label: "이번 주 해야 할", count: 0, items: [] },
+      { key: "delayed", label: "지연", count: 0, items: [] },
+      { key: "waiting", label: "대기", count: 0, items: [] },
       { key: "inProgress", label: "진행 중", count: 0, items: [] },
       { key: "done", label: "완료", count: 0, items: [] },
     ];
@@ -433,8 +434,8 @@ export function buildWorkBoardSnapshot(
       name,
       missionCount: missionCards.length,
       missions: [...missionCards].sort((left, right) => {
-        const overdueDiff = (right.buckets.find((bucket) => bucket.key === "overdue")?.count ?? 0)
-          - (left.buckets.find((bucket) => bucket.key === "overdue")?.count ?? 0);
+        const overdueDiff = (right.buckets.find((bucket) => bucket.key === "delayed")?.count ?? 0)
+          - (left.buckets.find((bucket) => bucket.key === "delayed")?.count ?? 0);
         if (overdueDiff !== 0) return overdueDiff;
 
         const inProgressDiff = (right.buckets.find((bucket) => bucket.key === "inProgress")?.count ?? 0)
@@ -464,8 +465,8 @@ export function buildWorkBoardSnapshot(
       totals.tasks += bucket.count;
       if (bucket.key === "done") totals.done += bucket.count;
       if (bucket.key === "inProgress") totals.inProgress += bucket.count;
-      if (bucket.key === "todo") totals.todo += bucket.count;
-      if (bucket.key === "overdue") totals.overdue += bucket.count;
+      if (bucket.key === "waiting") totals.todo += bucket.count;
+      if (bucket.key === "delayed") totals.overdue += bucket.count;
     }
   }
 
