@@ -396,8 +396,8 @@ function BoardContent({
 
         <div style={metricsGridStyle}>
           <MetricCard label="미션 수" value={data.columns.filter((c) => c.key !== COLUMN_UNASSIGNED).reduce((sum, c) => sum + c.missionCount, 0)} helper="이번 주 추적 중인 미션 (미분류 제외)" accent="#0ea5e9" />
-          <MetricCard label="전체 태스크" value={data.totals.tasks} helper="미션에 포함된 작업 수" accent="#6366f1" />
           <MetricCard label="대기" value={data.totals.todo} helper="대기 중인 태스크" accent="#f59e0b" />
+          <MetricCard label="진행" value={data.totals.inProgress} helper="진행 중인 태스크" accent="#3b82f6" />
           <MetricCard label="지연" value={data.totals.overdue} helper="N일 이상 미처리" accent="#ef4444" />
         </div>
       </section>
