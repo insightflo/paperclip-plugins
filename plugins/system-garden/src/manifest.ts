@@ -27,6 +27,18 @@ const manifest: PaperclipPluginManifestV1 = {
   author: "Paperclip",
   categories: ["ui"],
   capabilities,
+  instanceConfigSchema: {
+    type: "object",
+    properties: {
+      codeLayerSource: {
+        type: "string",
+        title: "Code layer source",
+        enum: ["none", "tool-registry", "knowledge-graph"],
+        default: "none",
+        description: "none: 코드 레이어 비활성, tool-registry: Tool Registry 도구+권한 그래프, knowledge-graph: UA KG 임베딩",
+      },
+    },
+  },
   entrypoints: {
     worker: "./dist/worker.js",
     ui: "./dist/ui",
