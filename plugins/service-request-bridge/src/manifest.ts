@@ -49,7 +49,7 @@ const manifest: PaperclipPluginManifestV1 = {
   description:
     "Links cross-company service issues and synchronizes status updates with loop-safe automation.",
   author: "InsightFlo",
-  categories: ["operations", "automation"],
+  categories: ["automation", "automation"],
   capabilities,
   entrypoints: {
     worker: "./dist/worker.js",

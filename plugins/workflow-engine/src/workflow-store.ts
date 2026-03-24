@@ -1,9 +1,10 @@
 import type { PluginContext, PluginEntityRecord } from "@paperclipai/plugin-sdk";
+import { randomUUID } from "node:crypto";
 
 import { ENTITY_TYPES } from "./constants.js";
 import type { WorkflowStep } from "./dag-engine.js";
 
-export interface WorkflowDefinition {
+export interface WorkflowDefinition extends Record<string, unknown> {
   name: string;
   description: string;
   companyId: string;
@@ -13,7 +14,7 @@ export interface WorkflowDefinition {
   maxConcurrentRuns?: number;
 }
 
-export interface WorkflowRun {
+export interface WorkflowRun extends Record<string, unknown> {
   workflowId: string;
   workflowName: string;
   companyId: string;
@@ -23,7 +24,7 @@ export interface WorkflowRun {
   completedAt?: string;
 }
 
-export interface WorkflowStepRun {
+export interface WorkflowStepRun extends Record<string, unknown> {
   runId: string;
   stepId: string;
   issueId?: string;
@@ -43,6 +44,7 @@ export interface WorkflowStepRun {
 }
 
 type TypedEntityRecord<T> = Omit<PluginEntityRecord, "data"> & { data: T };
+type PluginEntityScopeKind = "instance" | "company" | "project" | "issue";
 
 function toTypedRecord<T>(
   record: PluginEntityRecord,
@@ -57,6 +59,18 @@ function toTypedRecord<T>(
 
 function toEntityData<T>(value: T): Record<string, unknown> {
   return value as Record<string, unknown>;
+}
+
+function toScopeKind(value: unknown): PluginEntityScopeKind {
+  if (value === "instance" || value === "company" || value === "project" || value === "issue") {
+    return value;
+  }
+
+  return "company";
+}
+
+function makeExternalId(prefix: string): string {
+  return `${prefix}:${Date.now()}:${randomUUID()}`;
 }
 
 function mergeEntityData<T extends object>(
@@ -74,39 +88,30 @@ async function getEntityByType<T>(
   id: string,
   entityType: string,
 ): Promise<TypedEntityRecord<T> | null> {
-  const listQuery = {
-    entityType,
-    id,
-    limit: 1,
-  } as Record<string, unknown>;
+  const pageSize = 200;
+  let offset = 0;
 
-  const listed = await ctx.entities.list(
-    listQuery as Parameters<PluginContext["entities"]["list"]>[0],
-  );
-  const listedRecord = listed.find(
-    (record: PluginEntityRecord) => record.id === id,
-  ) ?? null;
+  while (true) {
+    const listed = await ctx.entities.list({
+      entityType,
+      limit: pageSize,
+      offset,
+    });
 
-  if (listedRecord) {
-    if (listedRecord.entityType !== entityType) {
+    const matched = listed.find(
+      (record: PluginEntityRecord) => record.id === id && record.entityType === entityType,
+    ) ?? null;
+
+    if (matched) {
+      return toTypedRecord<T>(matched, entityType);
+    }
+
+    if (listed.length < pageSize) {
       return null;
     }
 
-    return toTypedRecord<T>(listedRecord, entityType);
+    offset += listed.length;
   }
-
-  // Fallback: some host SDK variants ignore `id` on entities.list().
-  // Keep defensive type verification on direct get() until id-filter support is universal.
-  const record = await ctx.entities.get(id);
-  if (!record) {
-    return null;
-  }
-
-  if (record.entityType !== entityType) {
-    return null;
-  }
-
-  return toTypedRecord<T>(record, entityType);
 }
 
 async function requireEntityByType<T>(
@@ -128,10 +133,11 @@ export async function createWorkflowDefinition(
   ctx: PluginContext,
   def: WorkflowDefinition,
 ): Promise<PluginEntityRecord> {
-  return await ctx.entities.create({
+  return await ctx.entities.upsert({
     entityType: ENTITY_TYPES.workflowDefinition,
     scopeKind: "company",
     scopeId: def.companyId,
+    externalId: makeExternalId(`workflow-definition:${def.companyId}`),
     title: def.name,
     status: def.status,
     data: toEntityData(def),
@@ -173,7 +179,11 @@ export async function updateWorkflowDefinition(
   );
   const data = mergeEntityData<WorkflowDefinition>(current, updates);
 
-  return await ctx.entities.update(id, {
+  return await ctx.entities.upsert({
+    entityType: current.entityType,
+    scopeKind: toScopeKind(current.scopeKind),
+    scopeId: current.scopeId ?? undefined,
+    externalId: current.externalId ?? `workflow-definition:${current.id}`,
     title: data.name,
     status: data.status,
     data: toEntityData(data),
@@ -184,10 +194,11 @@ export async function createWorkflowRun(
   ctx: PluginContext,
   run: WorkflowRun,
 ): Promise<PluginEntityRecord> {
-  return await ctx.entities.create({
+  return await ctx.entities.upsert({
     entityType: ENTITY_TYPES.workflowRun,
     scopeKind: "company",
     scopeId: run.companyId,
+    externalId: makeExternalId(`workflow-run:${run.companyId}:${run.workflowId}`),
     title: `${run.workflowName} run`,
     status: run.status,
     data: toEntityData(run),
@@ -227,7 +238,11 @@ export async function updateWorkflowRun(
   );
   const data = mergeEntityData<WorkflowRun>(current, updates);
 
-  return await ctx.entities.update(id, {
+  return await ctx.entities.upsert({
+    entityType: current.entityType,
+    scopeKind: toScopeKind(current.scopeKind),
+    scopeId: current.scopeId ?? undefined,
+    externalId: current.externalId ?? `workflow-run:${current.id}`,
     title: `${data.workflowName} run`,
     status: data.status,
     data: toEntityData(data),
@@ -239,7 +254,7 @@ export async function createStepRun(
   companyId: string,
   stepRun: WorkflowStepRun,
 ): Promise<PluginEntityRecord> {
-  return await ctx.entities.create({
+  return await ctx.entities.upsert({
     entityType: ENTITY_TYPES.workflowStepRun,
     scopeKind: "company",
     scopeId: companyId,
@@ -310,8 +325,11 @@ export async function updateStepRun(
   );
   const data = mergeEntityData<WorkflowStepRun>(current, updates);
 
-  return await ctx.entities.update(id, {
-    externalId: `${data.runId}:${data.stepId}`,
+  return await ctx.entities.upsert({
+    entityType: current.entityType,
+    scopeKind: toScopeKind(current.scopeKind),
+    scopeId: current.scopeId ?? undefined,
+    externalId: current.externalId ?? `${data.runId}:${data.stepId}`,
     title: data.stepId,
     status: data.status,
     data: toEntityData(data),
@@ -323,15 +341,28 @@ export async function checkIdempotency(
   key: string,
   companyId: string,
 ): Promise<boolean> {
-  const matches = await ctx.entities.list({
-    entityType: ENTITY_TYPES.idempotencyKey,
-    scopeKind: "company",
-    scopeId: companyId,
-    externalId: key,
-    limit: 1,
-  });
+  const pageSize = 500;
+  let offset = 0;
 
-  return matches.length > 0;
+  while (true) {
+    const page = await ctx.entities.list({
+      entityType: ENTITY_TYPES.idempotencyKey,
+      scopeKind: "company",
+      scopeId: companyId,
+      limit: pageSize,
+      offset,
+    });
+
+    if (page.some((record: PluginEntityRecord) => record.externalId === key)) {
+      return true;
+    }
+
+    if (page.length < pageSize) {
+      return false;
+    }
+
+    offset += page.length;
+  }
 }
 
 export async function markIdempotency(
@@ -339,7 +370,7 @@ export async function markIdempotency(
   key: string,
   companyId: string,
 ): Promise<void> {
-  await ctx.entities.create({
+  await ctx.entities.upsert({
     entityType: ENTITY_TYPES.idempotencyKey,
     scopeKind: "company",
     scopeId: companyId,

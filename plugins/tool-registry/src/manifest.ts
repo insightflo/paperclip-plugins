@@ -30,7 +30,7 @@ const manifest: PaperclipPluginManifestV1 = {
   displayName: "Tool Registry",
   description: "Wraps approved CLI commands as plugin tools and enforces per-agent allow-lists.",
   author: "InsightFlo",
-  categories: ["automation", "security"],
+  categories: ["automation", "automation"],
   capabilities,
   entrypoints: {
     worker: "./dist/worker.js",

@@ -34,6 +34,16 @@ function toEntityData(value: Record<string, unknown>): Record<string, unknown> {
   return value;
 }
 
+type PluginEntityScopeKind = "instance" | "company" | "project" | "issue";
+
+function toScopeKind(value: unknown): PluginEntityScopeKind {
+  if (value === "instance" || value === "company" || value === "project" || value === "issue") {
+    return value;
+  }
+
+  return "company";
+}
+
 export function asRecord(value: unknown): Record<string, unknown> {
   if (!value || typeof value !== "object") {
     return {};
@@ -111,19 +121,42 @@ export function makeSyncStampExternalId(args: {
   ].join("::");
 }
 
+async function listCompanyEntitiesByType(
+  ctx: PluginContext,
+  entityType: string,
+  companyId: string,
+): Promise<PluginEntityRecord[]> {
+  const pageSize = 500;
+  let offset = 0;
+  const all: PluginEntityRecord[] = [];
+
+  while (true) {
+    const listed = await ctx.entities.list({
+      entityType,
+      scopeKind: "company",
+      scopeId: companyId,
+      limit: pageSize,
+      offset,
+    });
+
+    all.push(...listed.filter((record: PluginEntityRecord) => record.entityType === entityType));
+
+    if (listed.length < pageSize) {
+      break;
+    }
+
+    offset += listed.length;
+  }
+
+  return all;
+}
+
 export async function listBridgeLinksByCompany(
   ctx: PluginContext,
   companyId: string,
 ): Promise<BridgeLinkRecord[]> {
-  const listed = await ctx.entities.list({
-    entityType: ENTITY_TYPES.bridgeLink,
-    scopeKind: "company",
-    scopeId: companyId,
-    limit: 1000,
-  });
-
+  const listed = await listCompanyEntitiesByType(ctx, ENTITY_TYPES.bridgeLink, companyId);
   return listed
-    .filter((record: PluginEntityRecord) => record.entityType === ENTITY_TYPES.bridgeLink)
     .map((record: PluginEntityRecord) => toBridgeRecord(record));
 }
 
@@ -141,15 +174,8 @@ export async function findBridgeByExternalId(
   companyId: string,
   externalId: string,
 ): Promise<BridgeLinkRecord | null> {
-  const listed = await ctx.entities.list({
-    entityType: ENTITY_TYPES.bridgeLink,
-    scopeKind: "company",
-    scopeId: companyId,
-    externalId,
-    limit: 1,
-  });
-
-  const matched = listed.find((record: PluginEntityRecord) => record.entityType === ENTITY_TYPES.bridgeLink);
+  const listed = await listCompanyEntitiesByType(ctx, ENTITY_TYPES.bridgeLink, companyId);
+  const matched = listed.find((record: PluginEntityRecord) => record.externalId === externalId);
   return matched ? toBridgeRecord(matched) : null;
 }
 
@@ -186,26 +212,16 @@ async function upsertBridgeLink(
     lastSyncedStatus: current?.data.lastSyncedStatus,
     lastSyncSourceIssueId: current?.data.lastSyncSourceIssueId,
   };
-
-  if (current) {
-    const updated = await ctx.entities.update(current.id, {
-      title: `Bridge ${params.localIssueId} -> ${params.remoteCompanyId}:${params.remoteIssueId}`,
-      status: "active",
-      data: toEntityData(nextData as unknown as Record<string, unknown>),
-    });
-    return toBridgeRecord(updated);
-  }
-
-  const created = await ctx.entities.create({
+  const upserted = await ctx.entities.upsert({
     entityType: ENTITY_TYPES.bridgeLink,
-    scopeKind: "company",
-    scopeId: params.localCompanyId,
+    scopeKind: toScopeKind(current?.scopeKind),
+    scopeId: current?.scopeId ?? params.localCompanyId,
     externalId,
     title: `Bridge ${params.localIssueId} -> ${params.remoteCompanyId}:${params.remoteIssueId}`,
     status: "active",
     data: toEntityData(nextData as unknown as Record<string, unknown>),
   });
-  return toBridgeRecord(created);
+  return toBridgeRecord(upserted);
 }
 
 export async function upsertBridgePair(
@@ -249,9 +265,18 @@ export async function touchBridgeSyncMeta(
     lastSyncSourceIssueId: syncInfo.sourceIssueId,
   };
 
-  const updated = await ctx.entities.update(link.id, {
-    title: link.title,
-    status: link.status,
+  const updated = await ctx.entities.upsert({
+    entityType: link.entityType,
+    scopeKind: toScopeKind(link.scopeKind),
+    scopeId: link.scopeId ?? undefined,
+    externalId: link.externalId ?? makeBridgeExternalId(
+      link.data.localCompanyId,
+      link.data.localIssueId,
+      link.data.remoteCompanyId,
+      link.data.remoteIssueId,
+    ),
+    title: link.title ?? undefined,
+    status: link.status ?? undefined,
     data: toEntityData(nextData as unknown as Record<string, unknown>),
   });
 
@@ -264,15 +289,8 @@ export async function hasActiveSyncStamp(
   externalId: string,
   ttlMs: number,
 ): Promise<boolean> {
-  const listed = await ctx.entities.list({
-    entityType: ENTITY_TYPES.syncStamp,
-    scopeKind: "company",
-    scopeId: companyId,
-    externalId,
-    limit: 1,
-  });
-
-  const matched = listed.find((record: PluginEntityRecord) => record.entityType === ENTITY_TYPES.syncStamp);
+  const listed = await listCompanyEntitiesByType(ctx, ENTITY_TYPES.syncStamp, companyId);
+  const matched = listed.find((record: PluginEntityRecord) => record.externalId === externalId);
   if (!matched) {
     return false;
   }
@@ -298,32 +316,21 @@ export async function upsertSyncStamp(
   externalId: string,
   data: SyncStampData,
 ): Promise<void> {
-  const listed = await ctx.entities.list({
-    entityType: ENTITY_TYPES.syncStamp,
-    scopeKind: "company",
-    scopeId: companyId,
-    externalId,
-    limit: 1,
-  });
+  const listed = await listCompanyEntitiesByType(ctx, ENTITY_TYPES.syncStamp, companyId);
+  const matched = listed.find((record: PluginEntityRecord) => record.externalId === externalId) ?? null;
+  const nextData: SyncStampData = {
+    ...data,
+    createdAt: asString(asRecord(matched?.data).createdAt) || data.createdAt,
+  };
 
-  const matched = listed.find((record: PluginEntityRecord) => record.entityType === ENTITY_TYPES.syncStamp);
-  if (matched) {
-    await ctx.entities.update(matched.id, {
-      title: `Sync stamp ${data.localIssueId} -> ${data.remoteCompanyId}:${data.remoteIssueId}`,
-      status: "active",
-      data: toEntityData(data as unknown as Record<string, unknown>),
-    });
-    return;
-  }
-
-  await ctx.entities.create({
+  await ctx.entities.upsert({
     entityType: ENTITY_TYPES.syncStamp,
-    scopeKind: "company",
-    scopeId: companyId,
+    scopeKind: toScopeKind(matched?.scopeKind),
+    scopeId: matched?.scopeId ?? companyId,
     externalId,
-    title: `Sync stamp ${data.localIssueId} -> ${data.remoteCompanyId}:${data.remoteIssueId}`,
+    title: `Sync stamp ${nextData.localIssueId} -> ${nextData.remoteCompanyId}:${nextData.remoteIssueId}`,
     status: "active",
-    data: toEntityData(data as unknown as Record<string, unknown>),
+    data: toEntityData(nextData as unknown as Record<string, unknown>),
   });
 }
 
@@ -332,15 +339,8 @@ export async function isEventProcessed(
   companyId: string,
   eventId: string,
 ): Promise<boolean> {
-  const listed = await ctx.entities.list({
-    entityType: ENTITY_TYPES.idempotency,
-    scopeKind: "company",
-    scopeId: companyId,
-    externalId: eventId,
-    limit: 1,
-  });
-
-  return listed.length > 0;
+  const listed = await listCompanyEntitiesByType(ctx, ENTITY_TYPES.idempotency, companyId);
+  return listed.some((record: PluginEntityRecord) => record.externalId === eventId);
 }
 
 export async function markEventProcessed(
@@ -348,7 +348,7 @@ export async function markEventProcessed(
   companyId: string,
   eventId: string,
 ): Promise<void> {
-  await ctx.entities.create({
+  await ctx.entities.upsert({
     entityType: ENTITY_TYPES.idempotency,
     scopeKind: "company",
     scopeId: companyId,

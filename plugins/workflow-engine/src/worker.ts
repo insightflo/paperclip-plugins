@@ -468,7 +468,7 @@ async function advanceWorkflow(
     );
   }
 
-  if (!nextSteps.isWorkflowComplete || typedWorkflowRun.data.status === RUN_STATUSES.completed) {
+  if (!nextSteps.isWorkflowComplete || (typedWorkflowRun.data.status as string) === RUN_STATUSES.completed) {
     return;
   }
 
@@ -992,16 +992,18 @@ const plugin = definePlugin({
             const run = toWorkflowRunRecord(record);
             return {
               id: run.id,
-              status: run.status,
+              
               ...run.data,
+              status: (run.data as Record<string, unknown>).status as string ?? run.status,
             };
           }),
           workflows: workflowDefinitions.map((record) => {
             const workflow = toWorkflowDefinitionRecord(record);
             return {
               id: workflow.id,
-              status: workflow.status,
+              
               ...workflow.data,
+              status: (workflow.data as Record<string, unknown>).status as string ?? workflow.status,
             };
           }),
         };
@@ -1033,23 +1035,23 @@ const plugin = definePlugin({
 
         return {
           run: {
+            ...typedWorkflowRun.data,
             id: typedWorkflowRun.id,
             status: typedWorkflowRun.status,
-            ...typedWorkflowRun.data,
           },
           stepRuns: stepRuns.map((record: PluginEntityRecord) => {
             const stepRun = toWorkflowStepRunRecord(record);
             return {
+              ...stepRun.data,
               id: stepRun.id,
               status: stepRun.status,
-              ...stepRun.data,
             };
           }),
           workflow: workflowDefinition
             ? {
+              ...toWorkflowDefinitionRecord(workflowDefinition).data,
               id: workflowDefinition.id,
               status: workflowDefinition.status,
-              ...toWorkflowDefinitionRecord(workflowDefinition).data,
             }
             : null,
         };

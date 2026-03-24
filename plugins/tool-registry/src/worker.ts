@@ -53,27 +53,6 @@ type ExecutionLog = {
   reason?: string;
 };
 
-type EntitiesCompatClient = PluginContext["entities"] & {
-  create?: (input: {
-    entityType: string;
-    scopeKind: string;
-    scopeId?: string;
-    externalId?: string;
-    title?: string;
-    status?: string;
-    data: Record<string, unknown>;
-  }) => Promise<PluginEntityRecord>;
-  upsert?: (input: {
-    entityType: string;
-    scopeKind: string;
-    scopeId?: string;
-    externalId?: string;
-    title?: string;
-    status?: string;
-    data: Record<string, unknown>;
-  }) => Promise<PluginEntityRecord>;
-};
-
 const execFileAsync = promisify(execFile);
 
 function asRecord(value: unknown): JsonRecord {
@@ -195,14 +174,9 @@ function buildCommandArgs(rawArgs: unknown): string[] {
   return args;
 }
 
-function entities(ctx: PluginContext): EntitiesCompatClient {
-  return ctx.entities as unknown as EntitiesCompatClient;
-}
-
 async function writeExecutionLog(ctx: PluginContext, log: ExecutionLog): Promise<void> {
-  const client = entities(ctx);
   const externalId = `${log.timestamp}:${log.runId}:${log.agentId}:${log.toolName}:${log.mode}`;
-  const input = {
+  await ctx.entities.upsert({
     entityType: ENTITY_TYPES.executionLog,
     scopeKind: "company",
     scopeId: log.companyId,
@@ -210,17 +184,7 @@ async function writeExecutionLog(ctx: PluginContext, log: ExecutionLog): Promise
     title: `${log.agentName} - ${log.toolName}`,
     status: log.success === false ? "failed" : "ok",
     data: log as unknown as Record<string, unknown>,
-  };
-
-  if (typeof client.create === "function") {
-    await client.create(input);
-    return;
-  }
-
-  if (typeof client.upsert === "function") {
-    await client.upsert(input);
-    return;
-  }
+  });
 }
 
 async function listExecutionLogs(

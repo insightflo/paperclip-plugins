@@ -3,7 +3,7 @@ import { ENTITY_TYPES } from "./constants.js";
 
 export type JsonRecord = Record<string, unknown>;
 
-type PluginEntityScopeKind = "instance" | "company" | "project" | "project_workspace" | "agent" | "issue" | "goal" | "run";
+type PluginEntityScopeKind = "instance" | "company" | "project" | "issue";
 
 type EntityQuery = Parameters<PluginContext["entities"]["list"]>[0];
 
@@ -22,14 +22,6 @@ type EntityUpdateInput = {
   title?: string;
   status?: string;
   data?: JsonRecord;
-};
-
-type EntitiesCompatClient = PluginContext["entities"] & {
-  get?: (id: string) => Promise<PluginEntityRecord | null>;
-  create?: (input: EntityCreateInput) => Promise<PluginEntityRecord>;
-  update?: (id: string, patch: EntityUpdateInput) => Promise<PluginEntityRecord>;
-  delete?: (id: string) => Promise<void>;
-  upsert?: (input: EntityCreateInput) => Promise<PluginEntityRecord>;
 };
 
 export interface ToolConfig {
@@ -78,8 +70,8 @@ export interface AgentToolGrantRecord {
   updatedAt: string;
 }
 
-function entities(ctx: PluginContext): EntitiesCompatClient {
-  return ctx.entities as unknown as EntitiesCompatClient;
+function entities(ctx: PluginContext): PluginContext["entities"] {
+  return ctx.entities;
 }
 
 function asRecord(value: unknown): JsonRecord {
@@ -164,18 +156,12 @@ function asDataRecord<T extends object>(value: T): JsonRecord {
   return value as unknown as JsonRecord;
 }
 
-function queryWithOptionalId(
-  query: EntityQuery,
-  id?: string,
-): EntityQuery {
-  if (!id) {
-    return query;
+function toScopeKind(value: unknown): PluginEntityScopeKind {
+  if (value === "instance" || value === "company" || value === "project" || value === "issue") {
+    return value;
   }
 
-  return {
-    ...(query as JsonRecord),
-    id,
-  } as EntityQuery;
+  return "company";
 }
 
 async function listByType(
@@ -183,16 +169,30 @@ async function listByType(
   entityType: string,
   companyId: string,
 ): Promise<PluginEntityRecord[]> {
-  const listed = await entities(ctx).list({
-    entityType,
-    scopeKind: "company",
-    scopeId: companyId,
-    limit: 500,
-  } as EntityQuery);
+  const pageSize = 500;
+  let offset = 0;
+  const all: PluginEntityRecord[] = [];
 
-  return listed
-    .filter((record: PluginEntityRecord) => record.entityType === entityType)
-    .filter((record: PluginEntityRecord) => asRecord(record.data).__deleted !== true);
+  while (true) {
+    const listed = await entities(ctx).list({
+      entityType,
+      scopeKind: "company",
+      scopeId: companyId,
+      limit: pageSize,
+      offset,
+    } as EntityQuery);
+
+    const filtered = listed
+      .filter((record: PluginEntityRecord) => record.entityType === entityType)
+      .filter((record: PluginEntityRecord) => asRecord(record.data).__deleted !== true);
+    all.push(...filtered);
+
+    if (listed.length < pageSize) {
+      return all;
+    }
+
+    offset += listed.length;
+  }
 }
 
 async function findByExternalId(
@@ -201,21 +201,6 @@ async function findByExternalId(
   companyId: string,
   externalId: string,
 ): Promise<PluginEntityRecord | null> {
-  const listClient = entities(ctx);
-
-  const directMatches = await listClient.list({
-    entityType,
-    scopeKind: "company",
-    scopeId: companyId,
-    externalId,
-    limit: 20,
-  } as EntityQuery);
-
-  const direct = directMatches.find((record: PluginEntityRecord) => record.externalId === externalId);
-  if (direct) {
-    return direct;
-  }
-
   const all = await listByType(ctx, entityType, companyId);
   return all.find((record: PluginEntityRecord) => record.externalId === externalId) ?? null;
 }
@@ -225,94 +210,83 @@ async function getById(
   entityType: string,
   id: string,
 ): Promise<PluginEntityRecord | null> {
-  const listClient = entities(ctx);
-  const withId = await listClient.list(queryWithOptionalId({ entityType, limit: 10 } as EntityQuery, id));
-  const fromList = withId.find((record: PluginEntityRecord) => record.id === id && record.entityType === entityType) ?? null;
-  if (fromList) {
-    return fromList;
-  }
+  const pageSize = 200;
+  let offset = 0;
 
-  if (typeof listClient.get === "function") {
-    const viaGet = await listClient.get(id);
-    if (viaGet && viaGet.entityType === entityType) {
-      return viaGet;
+  while (true) {
+    const page = await entities(ctx).list({
+      entityType,
+      limit: pageSize,
+      offset,
+    } as EntityQuery);
+
+    const matched = page.find(
+      (record: PluginEntityRecord) =>
+        record.id === id
+        && record.entityType === entityType
+        && asRecord(record.data).__deleted !== true,
+    ) ?? null;
+
+    if (matched) {
+      return matched;
     }
-  }
 
-  return null;
+    if (page.length < pageSize) {
+      return null;
+    }
+
+    offset += page.length;
+  }
 }
 
 async function createEntity(ctx: PluginContext, input: EntityCreateInput): Promise<PluginEntityRecord> {
-  const client = entities(ctx);
-
-  if (typeof client.create === "function") {
-    return await client.create(input);
-  }
-
-  if (typeof client.upsert === "function") {
-    return await client.upsert(input);
-  }
-
-  throw new Error("ctx.entities.create/upsert is not available on this host runtime");
+  return await entities(ctx).upsert(input);
 }
 
 async function updateEntity(
   ctx: PluginContext,
+  entityType: string,
   id: string,
   patch: EntityUpdateInput,
 ): Promise<PluginEntityRecord> {
-  const client = entities(ctx);
-
-  if (typeof client.update === "function") {
-    return await client.update(id, patch);
+  const current = await getById(ctx, entityType, id);
+  if (!current) {
+    throw new Error(`Entity not found: ${id}`);
   }
 
-  if (typeof client.get === "function" && typeof client.upsert === "function") {
-    const current = await client.get(id);
-    if (!current) {
-      throw new Error(`Entity not found: ${id}`);
-    }
+  const currentData = asRecord(current.data);
+  const nextData = patch.data ? { ...currentData, ...patch.data } : currentData;
 
-    return await client.upsert({
-      entityType: current.entityType,
-      scopeKind: current.scopeKind as PluginEntityScopeKind,
-      scopeId: current.scopeId ?? undefined,
-      externalId: patch.externalId ?? current.externalId ?? undefined,
-      title: patch.title ?? current.title ?? undefined,
-      status: patch.status ?? current.status ?? undefined,
-      data: patch.data ?? asRecord(current.data),
-    });
-  }
-
-  throw new Error("ctx.entities.update is not available on this host runtime");
+  return await entities(ctx).upsert({
+    entityType: current.entityType,
+    scopeKind: toScopeKind(current.scopeKind),
+    scopeId: current.scopeId ?? undefined,
+    externalId: current.externalId ?? patch.externalId ?? `${current.entityType}:${current.id}`,
+    title: patch.title ?? current.title ?? undefined,
+    status: patch.status ?? current.status ?? undefined,
+    data: nextData,
+  });
 }
 
-async function deleteEntity(ctx: PluginContext, id: string): Promise<void> {
-  const client = entities(ctx);
-
-  if (typeof client.delete === "function") {
-    await client.delete(id);
+async function deleteEntity(ctx: PluginContext, entityType: string, id: string): Promise<void> {
+  const current = await getById(ctx, entityType, id);
+  if (!current) {
     return;
   }
 
-  if (typeof client.get === "function" && typeof client.update === "function") {
-    const current = await client.get(id);
-    if (!current) {
-      return;
-    }
-
-    await client.update(id, {
-      status: "deleted",
-      data: {
-        ...asRecord(current.data),
-        __deleted: true,
-        deletedAt: new Date().toISOString(),
-      },
-    });
-    return;
-  }
-
-  throw new Error("ctx.entities.delete is not available on this host runtime");
+  await entities(ctx).upsert({
+    entityType: current.entityType,
+    scopeKind: toScopeKind(current.scopeKind),
+    scopeId: current.scopeId ?? undefined,
+    externalId: current.externalId ?? `${current.entityType}:${current.id}`,
+    title: current.title ?? undefined,
+    status: "deleted",
+    data: {
+      ...asRecord(current.data),
+      __deleted: true,
+      deletedAt: new Date().toISOString(),
+    },
+  });
 }
 
 function toToolConfigRecord(record: PluginEntityRecord): ToolConfigRecord {
@@ -378,7 +352,7 @@ export async function updateTool(
     new Date().toISOString(),
   );
 
-  const updated = await updateEntity(ctx, existing.id, {
+  const updated = await updateEntity(ctx, ENTITY_TYPES.toolConfig, existing.id, {
     title: merged.name,
     status: "active",
     externalId: merged.name,
@@ -399,7 +373,7 @@ export async function deleteTool(
     return;
   }
 
-  await deleteEntity(ctx, existing.id);
+  await deleteEntity(ctx, ENTITY_TYPES.toolConfig, existing.id);
 }
 
 export async function getToolByName(
@@ -469,7 +443,7 @@ export async function revokeTool(
     return;
   }
 
-  await deleteEntity(ctx, existing.id);
+  await deleteEntity(ctx, ENTITY_TYPES.agentToolGrant, existing.id);
 }
 
 export async function listAgentGrants(

@@ -14,7 +14,7 @@ const manifest: PaperclipPluginManifestV1 = {
   displayName: "Knowledge Base",
   description: "Registers company knowledge sources and grants agent-level access at run time.",
   author: "InsightFlo",
-  categories: ["knowledge", "automation"],
+  categories: ["automation", "automation"],
   capabilities: [
     "events.subscribe",
     "agents.read",

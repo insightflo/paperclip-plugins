@@ -246,12 +246,12 @@ function formatDateTime(value: string | undefined): string {
   }).format(parsed);
 }
 
-function DataError({ error }: { error: Error | null | undefined }): JSX.Element | null {
+function DataError({ error }: { error: unknown }): JSX.Element | null {
   if (!error) {
     return null;
   }
 
-  return <p style={{ ...mutedStyle, color: "#b91c1c" }}>{error.message}</p>;
+  return <p style={{ ...mutedStyle, color: "#b91c1c" }}>{(error as Error)?.message ?? String(error)}</p>;
 }
 
 export function ServiceRequestBridgeListTab(props: GenericIssueTabProps): JSX.Element {
@@ -385,7 +385,7 @@ export function ServiceRequestBridgeDetailTab(props: GenericIssueTabProps): JSX.
       setRemoteIssueId("");
       await snapshot.refresh();
     } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : String(error));
+      setErrorMessage(error instanceof Error ? (error as Error)?.message ?? String(error) : String(error));
     }
   }
 
@@ -506,7 +506,7 @@ export function BridgeDashboardWidget({ context }: PluginWidgetProps): JSX.Eleme
   }
 
   if (snapshot.error) {
-    return <div style={widgetStyle}>Bridge 위젯 오류: {snapshot.error.message}</div>;
+    return <div style={widgetStyle}>Bridge 위젯 오류: {String(snapshot.error)}</div>;
   }
 
   if (!snapshot.data) {
