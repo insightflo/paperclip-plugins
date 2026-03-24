@@ -454,7 +454,7 @@ export function WorkBoardSidebarLink({ context }: PluginSidebarProps) {
       ].join(" ")}
     >
       <span aria-hidden="true">▦</span>
-      <span className="truncate">미션 보드</span>
+      <span className="truncate">Mission Board</span>
     </a>
   );
 }
