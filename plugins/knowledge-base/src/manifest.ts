@@ -1,0 +1,48 @@
+import type { PaperclipPluginManifestV1 } from "@paperclipai/plugin-sdk";
+import {
+  EXPORT_NAMES,
+  PAGE_ROUTE,
+  PLUGIN_ID,
+  PLUGIN_VERSION,
+  SLOT_IDS,
+} from "./constants.js";
+
+const manifest: PaperclipPluginManifestV1 = {
+  id: PLUGIN_ID,
+  apiVersion: 1,
+  version: PLUGIN_VERSION,
+  displayName: "Knowledge Base",
+  description: "Registers company knowledge sources and grants agent-level access at run time.",
+  author: "InsightFlo",
+  categories: ["knowledge", "automation"],
+  capabilities: [
+    "events.subscribe",
+    "agents.read",
+    "issue.comments.create",
+    "ui.page.register",
+    "ui.sidebar.register",
+  ],
+  entrypoints: {
+    worker: "./dist/worker.js",
+    ui: "./dist/ui",
+  },
+  ui: {
+    slots: [
+      {
+        type: "page",
+        id: SLOT_IDS.page,
+        displayName: "Knowledge Base",
+        exportName: EXPORT_NAMES.page,
+        routePath: PAGE_ROUTE,
+      },
+      {
+        type: "sidebar",
+        id: SLOT_IDS.sidebar,
+        displayName: "Knowledge Base",
+        exportName: EXPORT_NAMES.sidebar,
+      },
+    ],
+  },
+};
+
+export default manifest;

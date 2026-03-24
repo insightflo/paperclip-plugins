@@ -1,0 +1,12 @@
+{"ts": "2026-03-19T17:20:37+09:00", "event": "run_started", "job": "check_agents", "timeout_sec": 30, "retries": 1, "backoff_base_sec": 5, "command": ["/Users/kwak/.pyenv/shims/python3", "scripts/healthcheck/check_agents.py"]}
+{"ts": "2026-03-19T17:20:37+09:00", "event": "attempt_finished", "job": "check_agents", "attempt": 1, "max_attempts": 2, "status": "success", "returncode": 0, "duration_sec": 0.119, "stdout": "에이전트 점검 정상: 10명 전원 정상", "stderr": ""}
+{"ts": "2026-03-19T17:20:37+09:00", "event": "run_finished", "job": "check_agents", "status": "success", "exit_code": 0, "duration_sec": 0.119}
+{"ts": "2026-03-19T17:50:43+09:00", "event": "run_started", "job": "check_agents", "timeout_sec": 30, "retries": 1, "backoff_base_sec": 5, "command": ["/Users/kwak/.pyenv/shims/python3", "scripts/healthcheck/check_agents.py"]}
+{"ts": "2026-03-19T17:50:43+09:00", "event": "attempt_finished", "job": "check_agents", "attempt": 1, "max_attempts": 2, "status": "success", "returncode": 0, "duration_sec": 0.185, "stdout": "에이전트 점검 정상: 10명 전원 정상", "stderr": ""}
+{"ts": "2026-03-19T17:50:43+09:00", "event": "run_finished", "job": "check_agents", "status": "success", "exit_code": 0, "duration_sec": 0.185}
+{"ts": "2026-03-19T18:20:50+09:00", "event": "run_started", "job": "check_agents", "timeout_sec": 30, "retries": 1, "backoff_base_sec": 5, "command": ["/Users/kwak/.pyenv/shims/python3", "scripts/healthcheck/check_agents.py"]}
+{"ts": "2026-03-19T18:20:50+09:00", "event": "attempt_finished", "job": "check_agents", "attempt": 1, "max_attempts": 2, "status": "success", "returncode": 0, "duration_sec": 0.111, "stdout": "에이전트 점검 정상: 10명 전원 정상", "stderr": ""}
+{"ts": "2026-03-19T18:20:50+09:00", "event": "run_finished", "job": "check_agents", "status": "success", "exit_code": 0, "duration_sec": 0.111}
+{"ts": "2026-03-19T18:50:51+09:00", "event": "run_started", "job": "check_agents", "timeout_sec": 30, "retries": 1, "backoff_base_sec": 5, "command": ["/Users/kwak/.pyenv/shims/python3", "scripts/healthcheck/check_agents.py"]}
+{"ts": "2026-03-19T18:50:51+09:00", "event": "attempt_finished", "job": "check_agents", "attempt": 1, "max_attempts": 2, "status": "success", "returncode": 0, "duration_sec": 0.114, "stdout": "에이전트 점검 정상: 10명 전원 정상", "stderr": ""}
+{"ts": "2026-03-19T18:50:51+09:00", "event": "run_finished", "job": "check_agents", "status": "success", "exit_code": 0, "duration_sec": 0.114}

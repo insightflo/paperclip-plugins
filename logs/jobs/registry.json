@@ -1,0 +1,99 @@
+{
+  "check_agents": {
+    "job": "check_agents",
+    "last_run_at": "2026-03-23T17:36:43+09:00",
+    "last_status": "failure",
+    "last_exit_code": 1,
+    "last_duration_sec": 0.253,
+    "last_command": [
+      "/Users/kwak/.pyenv/shims/python3",
+      "scripts/healthcheck/check_agents.py"
+    ],
+    "last_stdout": "에이전트 점검 결과: 1건 이상\n  🔴 닉 퓨리 (CEO): error 상태",
+    "last_stderr": "",
+    "last_success": "2026-03-23T17:06:32+09:00",
+    "consecutive_failures": 1,
+    "last_failure": "2026-03-23T17:36:43+09:00",
+    "last_alert_candidate_at": "2026-03-20T21:33:33+09:00"
+  },
+  "check_issues": {
+    "job": "check_issues",
+    "last_run_at": "2026-03-23T17:36:44+09:00",
+    "last_status": "success",
+    "last_exit_code": 0,
+    "last_duration_sec": 0.127,
+    "last_command": [
+      "/Users/kwak/.pyenv/shims/python3",
+      "scripts/healthcheck/check_issues.py"
+    ],
+    "last_stdout": "이슈 점검 정상: 활성 5건, 완료 268건",
+    "last_stderr": "",
+    "last_failure": "2026-03-23T17:06:38+09:00",
+    "consecutive_failures": 0,
+    "last_success": "2026-03-23T17:36:44+09:00",
+    "last_alert_candidate_at": "2026-03-23T17:06:38+09:00"
+  },
+  "check_heartbeats": {
+    "job": "check_heartbeats",
+    "last_run_at": "2026-03-23T17:36:44+09:00",
+    "last_status": "success",
+    "last_exit_code": 0,
+    "last_duration_sec": 0.144,
+    "last_command": [
+      "/Users/kwak/.pyenv/shims/python3",
+      "scripts/healthcheck/check_heartbeats.py"
+    ],
+    "last_stdout": "Heartbeat 점검 정상: 최근 50회 중 40회 성공",
+    "last_stderr": "",
+    "last_success": "2026-03-23T17:36:44+09:00",
+    "consecutive_failures": 0,
+    "last_failure": "2026-03-23T16:36:32+09:00",
+    "last_alert_candidate_at": "2026-03-23T15:06:07+09:00"
+  },
+  "check_paperclip_issues": {
+    "job": "check_paperclip_issues",
+    "last_run_at": "2026-03-23T17:36:44+09:00",
+    "last_status": "success",
+    "last_exit_code": 0,
+    "last_duration_sec": 0.181,
+    "last_command": [
+      "/Users/kwak/.pyenv/shims/python3",
+      "scripts/healthcheck/check_paperclip_issues.py"
+    ],
+    "last_stdout": "CLEANED 1 — AID-266 → done (하위 1건 전부 완료)",
+    "last_stderr": "",
+    "last_success": "2026-03-23T17:36:44+09:00",
+    "consecutive_failures": 0
+  },
+  "daily_summary": {
+    "job": "daily_summary",
+    "last_run_at": "2026-03-23T10:34:39+09:00",
+    "last_status": "success",
+    "last_exit_code": 0,
+    "last_duration_sec": 0.132,
+    "last_command": [
+      "/Users/kwak/.pyenv/shims/python3",
+      "scripts/healthcheck/daily_summary.py"
+    ],
+    "last_stdout": "📊 AI Dev Factory 일일 요약 (2026-03-23 10:34)\n\n에이전트: 11명\n  error: 8\n  idle: 3\n\n이슈: 236건\n  cancelled: 22\n  done: 210\n  in_progress: 1\n  todo: 3",
+    "last_stderr": "",
+    "last_success": "2026-03-23T10:34:39+09:00",
+    "consecutive_failures": 0,
+    "last_failure": "2026-03-23T10:04:27+09:00"
+  },
+  "weekly_retro": {
+    "job": "weekly_retro",
+    "last_run_at": "2026-03-20T14:30:42+09:00",
+    "last_status": "success",
+    "last_exit_code": 0,
+    "last_duration_sec": 0.107,
+    "last_command": [
+      "/Users/kwak/.pyenv/shims/python3",
+      "scripts/healthcheck/weekly_retro.py"
+    ],
+    "last_stdout": "이번 주 회고 이슈 7건 이미 존재. 건너뜀.",
+    "last_stderr": "",
+    "last_success": "2026-03-20T14:30:42+09:00",
+    "consecutive_failures": 0
+  }
+}

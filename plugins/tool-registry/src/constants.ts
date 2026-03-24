@@ -1,0 +1,35 @@
+export const PLUGIN_ID = "insightflo.tool-registry";
+export const PLUGIN_VERSION = "0.1.0";
+export const PAGE_ROUTE = "tool-registry";
+
+export const SLOT_IDS = {
+  page: "tool-registry-page",
+} as const;
+
+export const EXPORT_NAMES = {
+  page: "ToolRegistryPage",
+} as const;
+
+export const TOOL_NAMES = {
+  genericCliExecutor: "generic-cli-executor",
+} as const;
+
+export const ENTITY_TYPES = {
+  toolConfig: "tool-config",
+  agentToolGrant: "agent-tool-grant",
+  executionLog: "tool-execution-log",
+} as const;
+
+export const DATA_KEYS = {
+  pageData: "tool-registry.page-data",
+} as const;
+
+export const ACTION_KEYS = {
+  createTool: "tool-registry.create-tool",
+  updateTool: "tool-registry.update-tool",
+  deleteTool: "tool-registry.delete-tool",
+  grantTool: "tool-registry.grant-tool",
+  revokeTool: "tool-registry.revoke-tool",
+} as const;
+
+export const DEFAULT_MAX_LOGS = 50;
