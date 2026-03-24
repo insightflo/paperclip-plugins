@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "type": "module",
   "private": true,
-  "description": "System Garden \u2014 interactive agent dependency graph and health dashboard",
+  "description": "System Garden — interactive agent dependency graph and health dashboard",
   "exports": {
     ".": "./src/index.ts"
   },
@@ -31,7 +31,7 @@
   "author": "Paperclip",
   "license": "MIT",
   "devDependencies": {
-    "@paperclipai/plugin-sdk": "workspace:*",
+    "@paperclipai/plugin-sdk": "^2026.318.0",
     "@rollup/plugin-node-resolve": "^16.0.1",
     "@rollup/plugin-typescript": "^12.1.2",
     "@types/node": "^24.6.0",

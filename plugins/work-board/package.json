@@ -8,8 +8,7 @@
     ".": "./src/index.ts"
   },
   "scripts": {
-    "prebuild": "node ../../../scripts/ensure-plugin-build-deps.mjs",
-    "build": "node ./esbuild.config.mjs",
+    "build": "tsc && node ./esbuild.config.mjs",
     "build:rollup": "rollup -c",
     "dev": "node ./esbuild.config.mjs --watch",
     "dev:ui": "paperclip-plugin-dev-server --root . --ui-dir dist/ui --port 4177",
@@ -31,7 +30,7 @@
   "author": "Paperclip",
   "license": "MIT",
   "devDependencies": {
-    "@paperclipai/plugin-sdk": "workspace:*",
+    "@paperclipai/plugin-sdk": "^2026.318.0",
     "@rollup/plugin-node-resolve": "^16.0.1",
     "@rollup/plugin-typescript": "^12.1.2",
     "@types/node": "^24.6.0",
