@@ -1,10 +1,11 @@
 import {
   useHostContext,
+  usePluginAction,
   usePluginData,
   type PluginPageProps,
   type PluginWidgetProps,
 } from "@paperclipai/plugin-sdk/ui";
-import { type CSSProperties, type JSX } from "react";
+import { useState, type CSSProperties, type FormEvent, type JSX } from "react";
 import { PLUGIN_ID } from "../constants.js";
 
 type WorkflowOverviewData = {
@@ -89,7 +90,7 @@ const thStyle: CSSProperties = {
 
 const tdStyle: CSSProperties = {
   padding: "12px",
-  borderBottom: "1px solid var(--border, #1e293b)",
+  borderBottom: "1px solid var(--border, #334155)",
   verticalAlign: "top",
 };
 
@@ -133,6 +134,46 @@ const buttonStyle: CSSProperties = {
   fontSize: "13px",
 };
 
+const buttonDisabledStyle: CSSProperties = {
+  opacity: 0.65,
+  cursor: "not-allowed",
+};
+
+const primaryButtonStyle: CSSProperties = {
+  ...buttonStyle,
+  background: "color-mix(in srgb, var(--foreground, #f8fafc) 14%, var(--card, #0f172a))",
+};
+
+const dangerButtonStyle: CSSProperties = {
+  ...buttonStyle,
+  background: "color-mix(in srgb, var(--muted-foreground, #94a3b8) 24%, var(--card, #0f172a))",
+};
+
+const inputStyle: CSSProperties = {
+  width: "100%",
+  padding: "8px 10px",
+  border: "1px solid var(--border, #334155)",
+  borderRadius: "8px",
+  background: "var(--background, #020617)",
+  color: "var(--foreground, #f8fafc)",
+  fontSize: "13px",
+};
+
+const textareaStyle: CSSProperties = {
+  ...inputStyle,
+  minHeight: "84px",
+  resize: "vertical",
+};
+
+const formPanelStyle: CSSProperties = {
+  display: "grid",
+  gap: "10px",
+  padding: "12px",
+  border: "1px solid var(--border, #334155)",
+  borderRadius: "10px",
+  background: "var(--card, #0f172a)",
+};
+
 function useWorkflowOverview(companyId: string | null | undefined) {
   return usePluginData<OverviewData>("workflow-overview", {
     companyId: companyId ?? "",
@@ -141,68 +182,48 @@ function useWorkflowOverview(companyId: string | null | undefined) {
 
 function statusBadgeStyle(status: string): CSSProperties {
   const normalized = status.trim().toLowerCase();
+  const base: CSSProperties = {
+    display: "inline-flex",
+    alignItems: "center",
+    padding: "2px 8px",
+    borderRadius: "999px",
+    fontSize: "12px",
+    fontWeight: 600,
+    border: "1px solid var(--border, #334155)",
+    color: "var(--foreground, #f8fafc)",
+  };
 
   if (normalized === "running" || normalized === "active") {
     return {
-      display: "inline-flex",
-      alignItems: "center",
-      padding: "2px 8px",
-      borderRadius: "999px",
-      background: "#dbeafe",
-      color: "#1d4ed8",
-      fontSize: "12px",
-      fontWeight: 600,
+      ...base,
+      background: "color-mix(in srgb, var(--foreground, #f8fafc) 16%, var(--background, #020617))",
     };
   }
 
   if (normalized === "completed") {
     return {
-      display: "inline-flex",
-      alignItems: "center",
-      padding: "2px 8px",
-      borderRadius: "999px",
-      background: "#dcfce7",
-      color: "#15803d",
-      fontSize: "12px",
-      fontWeight: 600,
+      ...base,
+      background: "color-mix(in srgb, var(--foreground, #f8fafc) 22%, var(--background, #020617))",
     };
   }
 
   if (normalized === "failed" || normalized === "aborted") {
     return {
-      display: "inline-flex",
-      alignItems: "center",
-      padding: "2px 8px",
-      borderRadius: "999px",
-      background: "#fee2e2",
-      color: "#b91c1c",
-      fontSize: "12px",
-      fontWeight: 600,
+      ...base,
+      background: "color-mix(in srgb, var(--muted-foreground, #94a3b8) 26%, var(--background, #020617))",
     };
   }
 
   if (normalized === "timed-out" || normalized === "paused") {
     return {
-      display: "inline-flex",
-      alignItems: "center",
-      padding: "2px 8px",
-      borderRadius: "999px",
-      background: "#ffedd5",
-      color: "#c2410c",
-      fontSize: "12px",
-      fontWeight: 600,
+      ...base,
+      background: "color-mix(in srgb, var(--muted-foreground, #94a3b8) 20%, var(--background, #020617))",
     };
   }
 
   return {
-    display: "inline-flex",
-    alignItems: "center",
-    padding: "2px 8px",
-    borderRadius: "999px",
-    background: "#f3f4f6",
-    color: "#4b5563",
-    fontSize: "12px",
-    fontWeight: 600,
+    ...base,
+    background: "color-mix(in srgb, var(--background, #020617) 78%, var(--card, #0f172a))",
   };
 }
 
@@ -234,53 +255,285 @@ function countStatuses(activeRuns: WorkflowOverviewData["activeRuns"]): Array<{ 
 function ErrorState({
   message,
   onRetry,
+  retrying,
 }: {
   message: string;
-  onRetry: () => void;
+  onRetry: () => Promise<void>;
+  retrying: boolean;
 }): JSX.Element {
   return (
     <div style={sectionStyle}>
       <p style={mutedTextStyle}>{message}</p>
       <div>
-        <button onClick={onRetry} style={buttonStyle} type="button">
-          Retry
+        <button
+          onClick={() => {
+            void onRetry();
+          }}
+          style={retrying ? { ...buttonStyle, ...buttonDisabledStyle } : buttonStyle}
+          type="button"
+          disabled={retrying}
+        >
+          {retrying ? "갱신 중..." : "Retry"}
         </button>
       </div>
     </div>
   );
 }
 
-function DefinitionsTable({ workflows }: { workflows: WorkflowOverviewData["workflows"] }): JSX.Element {
+function DefinitionsTable({
+  workflows,
+  companyId,
+  refreshOverview,
+}: {
+  workflows: WorkflowOverviewData["workflows"];
+  companyId: string;
+  refreshOverview: () => Promise<void>;
+}): JSX.Element {
+  const updateWorkflow = usePluginAction("update-workflow");
+  const deleteWorkflow = usePluginAction("delete-workflow");
+  const [editingWorkflowId, setEditingWorkflowId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState<string>("");
+  const [editingDescription, setEditingDescription] = useState<string>("");
+  const [editingStatus, setEditingStatus] = useState<string>("active");
+  const [pendingWorkflowId, setPendingWorkflowId] = useState<string | null>(null);
+  const [tableError, setTableError] = useState<string>("");
+
+  function beginEdit(workflow: WorkflowOverviewData["workflows"][number]): void {
+    setTableError("");
+    setEditingWorkflowId(workflow.id);
+    setEditingName(workflow.name);
+    setEditingDescription(workflow.description);
+    setEditingStatus(workflow.status);
+  }
+
+  function cancelEdit(): void {
+    setEditingWorkflowId(null);
+    setEditingName("");
+    setEditingDescription("");
+    setEditingStatus("active");
+    setTableError("");
+  }
+
+  async function onSaveEdit(workflowId: string): Promise<void> {
+    const nextName = editingName.trim();
+    if (!nextName) {
+      setTableError("name은 필수입니다.");
+      return;
+    }
+
+    setPendingWorkflowId(workflowId);
+    setTableError("");
+    try {
+      const patch = {
+        name: nextName,
+        description: editingDescription.trim(),
+        status: editingStatus.trim() || "active",
+      };
+      await updateWorkflow({
+        companyId,
+        workflowId,
+        id: workflowId,
+        patch,
+        ...patch,
+      });
+      cancelEdit();
+      await refreshOverview();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setTableError(`수정 실패: ${message}`);
+    } finally {
+      setPendingWorkflowId(null);
+    }
+  }
+
+  async function onDeleteWorkflow(workflow: WorkflowOverviewData["workflows"][number]): Promise<void> {
+    const accepted = typeof window !== "undefined"
+      ? window.confirm(`"${workflow.name}" 워크플로를 archived 상태로 변경할까요?`)
+      : true;
+    if (!accepted) {
+      return;
+    }
+
+    setPendingWorkflowId(workflow.id);
+    setTableError("");
+    try {
+      await deleteWorkflow({
+        companyId,
+        workflowId: workflow.id,
+        id: workflow.id,
+        status: "archived",
+      });
+      if (editingWorkflowId === workflow.id) {
+        cancelEdit();
+      }
+      await refreshOverview();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setTableError(`삭제 실패: ${message}`);
+    } finally {
+      setPendingWorkflowId(null);
+    }
+  }
+
+  async function onToggleStatus(workflow: WorkflowOverviewData["workflows"][number]): Promise<void> {
+    const normalized = workflow.status.trim().toLowerCase();
+    if (normalized !== "active" && normalized !== "paused") {
+      return;
+    }
+
+    const nextStatus = normalized === "active" ? "paused" : "active";
+    setPendingWorkflowId(workflow.id);
+    setTableError("");
+    try {
+      await updateWorkflow({
+        companyId,
+        workflowId: workflow.id,
+        id: workflow.id,
+        patch: { status: nextStatus },
+        status: nextStatus,
+      });
+      await refreshOverview();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setTableError(`status 변경 실패: ${message}`);
+    } finally {
+      setPendingWorkflowId(null);
+    }
+  }
+
   if (workflows.length === 0) {
     return <p style={mutedTextStyle}>No workflows defined yet.</p>;
   }
 
   return (
-    <table style={tableStyle}>
-      <thead>
-        <tr>
-          <th style={thStyle}>Name</th>
-          <th style={thStyle}>Status</th>
-          <th style={thStyle}>Step Count</th>
-        </tr>
-      </thead>
-      <tbody>
-        {workflows.map((workflow) => (
-          <tr key={workflow.id}>
-            <td style={tdStyle}>
-              <div style={{ display: "grid", gap: "4px" }}>
-                <strong>{workflow.name}</strong>
-                <span style={mutedTextStyle}>{workflow.description}</span>
-              </div>
-            </td>
-            <td style={tdStyle}>
-              <span style={statusBadgeStyle(workflow.status)}>{workflow.status}</span>
-            </td>
-            <td style={tdStyle}>{workflow.steps.length}</td>
+    <div style={{ display: "grid", gap: "8px" }}>
+      {tableError ? <p style={mutedTextStyle}>{tableError}</p> : null}
+      <table style={tableStyle}>
+        <thead>
+          <tr>
+            <th style={thStyle}>Name</th>
+            <th style={thStyle}>Status</th>
+            <th style={thStyle}>Step Count</th>
+            <th style={thStyle}>Actions</th>
           </tr>
-        ))}
-      </tbody>
-    </table>
+        </thead>
+        <tbody>
+          {workflows.map((workflow) => {
+            const isEditing = editingWorkflowId === workflow.id;
+            const isPending = pendingWorkflowId === workflow.id;
+            const normalizedStatus = workflow.status.trim().toLowerCase();
+
+            return (
+              <tr key={workflow.id}>
+                <td style={tdStyle}>
+                  {isEditing ? (
+                    <div style={{ display: "grid", gap: "8px" }}>
+                      <input
+                        style={inputStyle}
+                        value={editingName}
+                        onChange={(event) => setEditingName(event.target.value)}
+                        required
+                      />
+                      <textarea
+                        style={textareaStyle}
+                        value={editingDescription}
+                        onChange={(event) => setEditingDescription(event.target.value)}
+                        rows={3}
+                      />
+                    </div>
+                  ) : (
+                    <div style={{ display: "grid", gap: "4px" }}>
+                      <strong>{workflow.name}</strong>
+                      <span style={mutedTextStyle}>{workflow.description || "-"}</span>
+                    </div>
+                  )}
+                </td>
+                <td style={tdStyle}>
+                  {isEditing ? (
+                    <select
+                      style={inputStyle}
+                      value={editingStatus}
+                      onChange={(event) => setEditingStatus(event.target.value)}
+                    >
+                      <option value="active">active</option>
+                      <option value="paused">paused</option>
+                      <option value="archived">archived</option>
+                    </select>
+                  ) : (
+                    <span style={statusBadgeStyle(workflow.status)}>{workflow.status}</span>
+                  )}
+                </td>
+                <td style={tdStyle}>{workflow.steps.length}</td>
+                <td style={tdStyle}>
+                  <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+                    {isEditing ? (
+                      <>
+                        <button
+                          type="button"
+                          style={isPending ? { ...primaryButtonStyle, ...buttonDisabledStyle } : primaryButtonStyle}
+                          disabled={isPending}
+                          onClick={() => {
+                            void onSaveEdit(workflow.id);
+                          }}
+                        >
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          style={isPending ? { ...buttonStyle, ...buttonDisabledStyle } : buttonStyle}
+                          disabled={isPending}
+                          onClick={cancelEdit}
+                        >
+                          Cancel
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          style={isPending ? { ...buttonStyle, ...buttonDisabledStyle } : buttonStyle}
+                          disabled={isPending}
+                          onClick={() => beginEdit(workflow)}
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          style={isPending ? { ...dangerButtonStyle, ...buttonDisabledStyle } : dangerButtonStyle}
+                          disabled={isPending}
+                          onClick={() => {
+                            void onDeleteWorkflow(workflow);
+                          }}
+                        >
+                          Delete
+                        </button>
+                        <button
+                          type="button"
+                          style={isPending ? { ...buttonStyle, ...buttonDisabledStyle } : buttonStyle}
+                          disabled={isPending || (normalizedStatus !== "active" && normalizedStatus !== "paused")}
+                          onClick={() => {
+                            void onToggleStatus(workflow);
+                          }}
+                        >
+                          {normalizedStatus === "active" ? "Pause" : "Activate"}
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            );
+          })}
+          {workflows.length === 0 ? (
+            <tr>
+              <td colSpan={4} style={tdStyle}>
+                <p style={mutedTextStyle}>No workflows defined yet.</p>
+              </td>
+            </tr>
+          ) : null}
+        </tbody>
+      </table>
+    </div>
   );
 }
 
@@ -317,11 +570,99 @@ export function WorkflowPage(props: PluginPageProps): JSX.Element {
   const hostContext = useHostContext();
   const companyId = hostContext.companyId ?? props.context.companyId ?? "";
   const overview = useWorkflowOverview(companyId);
+  const createWorkflow = usePluginAction("create-workflow");
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [showNewWorkflowForm, setShowNewWorkflowForm] = useState(false);
+  const [newWorkflowName, setNewWorkflowName] = useState("");
+  const [newWorkflowDescription, setNewWorkflowDescription] = useState("");
+  const [newWorkflowSteps, setNewWorkflowSteps] = useState("[]");
+  const [createError, setCreateError] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
+
+  async function refreshOverview(): Promise<void> {
+    if (isRefreshing) {
+      return;
+    }
+    setIsRefreshing(true);
+    try {
+      await overview.refresh();
+    } finally {
+      setIsRefreshing(false);
+    }
+  }
+
+  function resetCreateForm(): void {
+    setNewWorkflowName("");
+    setNewWorkflowDescription("");
+    setNewWorkflowSteps("[]");
+    setCreateError("");
+    setShowNewWorkflowForm(false);
+  }
+
+  async function onCreateWorkflow(event: FormEvent<HTMLFormElement>): Promise<void> {
+    event.preventDefault();
+    const name = newWorkflowName.trim();
+    if (!name) {
+      setCreateError("name은 필수입니다.");
+      return;
+    }
+
+    let parsedSteps: unknown = [];
+    try {
+      parsedSteps = newWorkflowSteps.trim() ? JSON.parse(newWorkflowSteps) : [];
+    } catch (error) {
+      setCreateError(`steps JSON 파싱 실패: ${error instanceof Error ? error.message : String(error)}`);
+      return;
+    }
+
+    if (!Array.isArray(parsedSteps)) {
+      setCreateError("steps는 JSON 배열이어야 합니다.");
+      return;
+    }
+
+    setCreateError("");
+    setIsCreating(true);
+    try {
+      const description = newWorkflowDescription.trim();
+      const workflow = {
+        name,
+        description,
+        status: "active",
+        steps: parsedSteps,
+      };
+      await createWorkflow({
+        companyId,
+        workflow,
+        ...workflow,
+      });
+      resetCreateForm();
+      await refreshOverview();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      setCreateError(`생성 실패: ${message}`);
+    } finally {
+      setIsCreating(false);
+    }
+  }
+
+  const refreshButtonLabel = isRefreshing ? "갱신 중..." : "↻ Refresh";
 
   if (overview.loading) {
     return (
       <div data-plugin-id={PLUGIN_ID} style={pageStyle}>
-        <h1 style={titleStyle}>Workflows</h1>
+        <div style={headerRowStyle}>
+          <h1 style={titleStyle}>Workflows</h1>
+          <button
+            type="button"
+            onClick={() => {
+              void refreshOverview();
+            }}
+            disabled={isRefreshing}
+            style={isRefreshing ? { ...buttonStyle, ...buttonDisabledStyle } : buttonStyle}
+          >
+            {refreshButtonLabel}
+          </button>
+        </div>
         <p style={mutedTextStyle}>Loading workflows...</p>
       </div>
     );
@@ -330,12 +671,23 @@ export function WorkflowPage(props: PluginPageProps): JSX.Element {
   if (overview.error) {
     return (
       <div data-plugin-id={PLUGIN_ID} style={pageStyle}>
-        <h1 style={titleStyle}>Workflows</h1>
+        <div style={headerRowStyle}>
+          <h1 style={titleStyle}>Workflows</h1>
+          <button
+            type="button"
+            onClick={() => {
+              void refreshOverview();
+            }}
+            disabled={isRefreshing}
+            style={isRefreshing ? { ...buttonStyle, ...buttonDisabledStyle } : buttonStyle}
+          >
+            {refreshButtonLabel}
+          </button>
+        </div>
         <ErrorState
           message={`Failed to load workflows: ${overview.error.message}`}
-          onRetry={() => {
-            void overview.refresh();
-          }}
+          onRetry={refreshOverview}
+          retrying={isRefreshing}
         />
       </div>
     );
@@ -347,19 +699,103 @@ export function WorkflowPage(props: PluginPageProps): JSX.Element {
     <div data-plugin-id={PLUGIN_ID} style={pageStyle}>
       <div style={headerRowStyle}>
         <h1 style={titleStyle}>Workflows</h1>
+        <button
+          type="button"
+          onClick={() => {
+            void refreshOverview();
+          }}
+          disabled={isRefreshing}
+          style={isRefreshing ? { ...buttonStyle, ...buttonDisabledStyle } : buttonStyle}
+        >
+          {refreshButtonLabel}
+        </button>
       </div>
 
       <section style={sectionStyle}>
-        <div style={{ display: "grid", gap: "4px" }}>
-          <h2 style={sectionTitleStyle}>Workflow Definitions</h2>
+        <div style={{ display: "grid", gap: "10px" }}>
+          <div style={{ ...headerRowStyle, justifyContent: "space-between" }}>
+            <h2 style={sectionTitleStyle}>Workflow Definitions</h2>
+            <button
+              type="button"
+              style={showNewWorkflowForm ? { ...buttonStyle, ...buttonDisabledStyle } : primaryButtonStyle}
+              disabled={showNewWorkflowForm}
+              onClick={() => {
+                setCreateError("");
+                setShowNewWorkflowForm(true);
+              }}
+            >
+              + New Workflow
+            </button>
+          </div>
           <p style={mutedTextStyle}>Definitions available for this company.</p>
         </div>
-        <DefinitionsTable workflows={data.workflows} />
+        {showNewWorkflowForm ? (
+          <form style={formPanelStyle} onSubmit={(event) => void onCreateWorkflow(event)}>
+            <div style={{ display: "grid", gap: "6px" }}>
+              <label style={mutedTextStyle}>name</label>
+              <input
+                style={inputStyle}
+                value={newWorkflowName}
+                onChange={(event) => setNewWorkflowName(event.target.value)}
+                required
+              />
+            </div>
+            <div style={{ display: "grid", gap: "6px" }}>
+              <label style={mutedTextStyle}>description</label>
+              <textarea
+                style={textareaStyle}
+                value={newWorkflowDescription}
+                onChange={(event) => setNewWorkflowDescription(event.target.value)}
+                rows={3}
+              />
+            </div>
+            <div style={{ display: "grid", gap: "6px" }}>
+              <label style={mutedTextStyle}>steps (JSON)</label>
+              <textarea
+                style={{ ...textareaStyle, minHeight: "120px", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}
+                value={newWorkflowSteps}
+                onChange={(event) => setNewWorkflowSteps(event.target.value)}
+                rows={6}
+              />
+            </div>
+            {createError ? <p style={mutedTextStyle}>{createError}</p> : null}
+            <div style={{ display: "flex", gap: "8px" }}>
+              <button
+                type="submit"
+                style={isCreating ? { ...primaryButtonStyle, ...buttonDisabledStyle } : primaryButtonStyle}
+                disabled={isCreating}
+              >
+                Save
+              </button>
+              <button
+                type="button"
+                style={isCreating ? { ...buttonStyle, ...buttonDisabledStyle } : buttonStyle}
+                disabled={isCreating}
+                onClick={resetCreateForm}
+              >
+                Cancel
+              </button>
+            </div>
+          </form>
+        ) : null}
+        <DefinitionsTable workflows={data.workflows} companyId={companyId} refreshOverview={refreshOverview} />
       </section>
 
       <section style={sectionStyle}>
-        <div style={{ display: "grid", gap: "4px" }}>
-          <h2 style={sectionTitleStyle}>Active Runs</h2>
+        <div style={{ display: "grid", gap: "10px" }}>
+          <div style={{ ...headerRowStyle, justifyContent: "space-between" }}>
+            <h2 style={sectionTitleStyle}>Active Runs</h2>
+            <button
+              type="button"
+              onClick={() => {
+                void refreshOverview();
+              }}
+              disabled={isRefreshing}
+              style={isRefreshing ? { ...buttonStyle, ...buttonDisabledStyle } : buttonStyle}
+            >
+              {refreshButtonLabel}
+            </button>
+          </div>
           <p style={mutedTextStyle}>Currently running or unresolved workflow executions.</p>
         </div>
         <ActiveRunsTable activeRuns={data.activeRuns} />
