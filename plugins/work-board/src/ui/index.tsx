@@ -240,14 +240,25 @@ function MissionBucketSection({
 }
 
 function MissionCardPanel({ mission, companyPrefix }: { mission: MissionCard; companyPrefix: string | null | undefined }) {
+  const [expanded, setExpanded] = useState(false);
+  const totalTasks = mission.progress.total;
+
   return (
     <article style={missionCardStyle}>
-      <div style={{ display: "grid", gap: "6px" }}>
+      <button
+        type="button"
+        onClick={() => setExpanded((v) => !v)}
+        style={{ all: "unset", cursor: "pointer", display: "grid", gap: "6px", width: "100%" }}
+      >
         <div style={{ display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "start" }}>
-          <div style={{ display: "grid", gap: "4px" }}>
-            <strong style={{ fontSize: "16px" }}>{mission.title}</strong>
+          <div style={{ display: "grid", gap: "4px", textAlign: "left" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span aria-hidden="true" style={{ fontSize: "12px", opacity: 0.6 }}>{expanded ? "▾" : "▸"}</span>
+              <strong style={{ fontSize: "16px" }}>{mission.title}</strong>
+            </div>
             <div style={tinyMutedStyle}>
               {mission.missionIdentifier ?? mission.missionIssueId ?? mission.missionId.slice(0, 8)}
+              {" · "}{totalTasks}건
             </div>
           </div>
           <span style={{ ...tinyMutedStyle, padding: "4px 8px", borderRadius: "999px", background: "color-mix(in srgb, var(--accent, #7dd3fc) 16%, transparent)" }}>
@@ -256,28 +267,26 @@ function MissionCardPanel({ mission, companyPrefix }: { mission: MissionCard; co
         </div>
 
         <div style={{ display: "grid", gap: "4px" }}>
-          <div style={{ ...tinyMutedStyle, display: "flex", justifyContent: "space-between", gap: "8px" }}>
-            <span>진행률</span>
-            <span>{mission.progress.percent}%</span>
-          </div>
-          <div style={{ width: "100%", height: "8px", borderRadius: "999px", background: "color-mix(in srgb, var(--muted, #e5e7eb) 60%, transparent)", overflow: "hidden" }}>
+          <div style={{ width: "100%", height: "6px", borderRadius: "999px", background: "color-mix(in srgb, var(--muted, #e5e7eb) 60%, transparent)", overflow: "hidden" }}>
             <div
               style={{
                 width: `${mission.progress.percent}%`,
                 height: "100%",
                 borderRadius: "999px",
-                background: "linear-gradient(90deg, #22c55e, #0ea5e9)",
+                background: mission.progress.percent === 100 ? "#22c55e" : "linear-gradient(90deg, #22c55e, #0ea5e9)",
               }}
             />
           </div>
         </div>
-      </div>
+      </button>
 
-      <div style={{ display: "grid", gap: "8px" }}>
-        {mission.buckets.map((bucket) => (
-          <MissionBucketSection key={bucket.key} bucket={bucket} companyPrefix={companyPrefix} />
-        ))}
-      </div>
+      {expanded ? (
+        <div style={{ display: "grid", gap: "8px", marginTop: "8px" }}>
+          {mission.buckets.map((bucket) => (
+            <MissionBucketSection key={bucket.key} bucket={bucket} companyPrefix={companyPrefix} />
+          ))}
+        </div>
+      ) : null}
     </article>
   );
 }
