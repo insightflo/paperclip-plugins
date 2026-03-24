@@ -41,7 +41,7 @@ const manifest: PaperclipPluginManifestV1 = {
       {
         type: "dashboardWidget",
         id: "work-board-dashboard-widget",
-        displayName: "Weekly Work Board",
+        displayName: "Mission Board",
         exportName: "WorkBoardDashboardWidget"
       }
     ]

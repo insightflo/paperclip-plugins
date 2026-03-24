@@ -21,6 +21,7 @@ const capabilities = [
   "plugin.state.write",
   "agent.tools.register",
   "ui.page.register",
+  "ui.sidebar.register",
 ] as unknown as PaperclipPluginManifestV1["capabilities"];
 
 const manifest: PaperclipPluginManifestV1 = {
@@ -94,6 +95,12 @@ const manifest: PaperclipPluginManifestV1 = {
         displayName: "Tool Registry",
         exportName: EXPORT_NAMES.page,
         routePath: PAGE_ROUTE,
+      },
+      {
+        type: "sidebar",
+        id: SLOT_IDS.sidebar,
+        displayName: "Tool Registry",
+        exportName: EXPORT_NAMES.sidebar,
       },
     ],
   },

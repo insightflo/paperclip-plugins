@@ -4,10 +4,12 @@ export const PAGE_ROUTE = "tool-registry";
 
 export const SLOT_IDS = {
   page: "tool-registry-page",
+  sidebar: "tool-registry-sidebar-link",
 } as const;
 
 export const EXPORT_NAMES = {
   page: "ToolRegistryPage",
+  sidebar: "ToolRegistrySidebarLink",
 } as const;
 
 export const TOOL_NAMES = {

@@ -5,11 +5,13 @@ export const PAGE_ROUTE = "workflows";
 export const SLOT_IDS = {
   page: "workflow-engine-page",
   dashboardWidget: "workflow-engine-dashboard-widget",
+  sidebar: "workflow-engine-sidebar-link",
 } as const;
 
 export const EXPORT_NAMES = {
   page: "WorkflowPage",
   dashboardWidget: "WorkflowDashboardWidget",
+  sidebar: "WorkflowSidebarLink",
 } as const;
 
 export const JOB_KEYS = {

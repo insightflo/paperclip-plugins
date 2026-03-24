@@ -17,6 +17,7 @@ const capabilities = [
   "plugin.state.write",
   "ui.dashboardWidget.register",
   "ui.page.register",
+  "ui.sidebar.register",
   "ui.detailTab.register",
 ] as unknown as PaperclipPluginManifestV1["capabilities"];
 

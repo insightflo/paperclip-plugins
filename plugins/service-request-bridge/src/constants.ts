@@ -5,12 +5,14 @@ export const SLOT_IDS = {
   listTab: "service-request-bridge-list-tab",
   detailTab: "service-request-bridge-detail-tab",
   dashboardWidget: "service-request-bridge-dashboard-widget",
+  sidebar: "service-request-bridge-sidebar-link",
 } as const;
 
 export const EXPORT_NAMES = {
   listTab: "ServiceRequestBridgeListTab",
   detailTab: "ServiceRequestBridgeDetailTab",
   dashboardWidget: "BridgeDashboardWidget",
+  sidebar: "BridgeSidebarLink",
 } as const;
 
 export const ENTITY_TYPES = {

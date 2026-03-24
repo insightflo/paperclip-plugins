@@ -36,6 +36,7 @@ const manifest: PaperclipPluginManifestV1 = {
     "jobs.schedule",
     "ui.page.register",
     "ui.dashboardWidget.register",
+    "ui.sidebar.register",
   ],
   entrypoints: {
     worker: "./dist/worker.js",
@@ -64,6 +65,12 @@ const manifest: PaperclipPluginManifestV1 = {
         id: SLOT_IDS.dashboardWidget,
         displayName: "Workflow Status",
         exportName: EXPORT_NAMES.dashboardWidget,
+      },
+      {
+        type: "sidebar",
+        id: SLOT_IDS.sidebar,
+        displayName: "Workflows",
+        exportName: EXPORT_NAMES.sidebar,
       },
     ],
   },

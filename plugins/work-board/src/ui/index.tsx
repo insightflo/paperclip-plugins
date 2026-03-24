@@ -426,10 +426,10 @@ export function WorkBoardPage({ context }: PluginPageProps) {
   const board = useWorkBoard(context.companyId);
 
   if (board.loading) {
-    return <div style={pageStyle}>업무 보드를 불러오는 중...</div>;
+    return <div style={pageStyle}>미션 보드를 불러오는 중...</div>;
   }
   if (board.error) {
-    return <div style={pageStyle}>업무 보드를 불러오지 못했다: {board.error.message}</div>;
+    return <div style={pageStyle}>미션 보드를 불러오지 못했다: {board.error.message}</div>;
   }
   if (!board.data) {
     return <div style={pageStyle}>표시할 데이터가 없다.</div>;
@@ -454,7 +454,7 @@ export function WorkBoardSidebarLink({ context }: PluginSidebarProps) {
       ].join(" ")}
     >
       <span aria-hidden="true">▦</span>
-      <span className="truncate">업무 보드</span>
+      <span className="truncate">미션 보드</span>
     </a>
   );
 }
@@ -462,8 +462,8 @@ export function WorkBoardSidebarLink({ context }: PluginSidebarProps) {
 export function WorkBoardDashboardWidget({ context }: PluginWidgetProps) {
   const board = useWorkBoard(context.companyId);
 
-  if (board.loading) return <div>업무 보드 요약을 불러오는 중...</div>;
-  if (board.error) return <div>업무 보드 오류: {board.error.message}</div>;
+  if (board.loading) return <div>미션 보드 요약을 불러오는 중...</div>;
+  if (board.error) return <div>미션 보드 오류: {board.error.message}</div>;
   if (!board.data) return <div>요약 데이터가 없다.</div>;
 
   return (

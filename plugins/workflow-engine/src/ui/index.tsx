@@ -415,3 +415,22 @@ export function WorkflowDashboardWidget(props: PluginWidgetProps): JSX.Element {
     </div>
   );
 }
+
+export function WorkflowSidebarLink({ context }: { context: { companyPrefix?: string | null } }) {
+  const href = context.companyPrefix ? `/${context.companyPrefix}/workflows` : "/workflows";
+  const isActive = typeof window !== "undefined" && window.location.pathname === href;
+  return (
+    <a
+      href={href}
+      style={{
+        display: "flex", alignItems: "center", gap: "10px", padding: "8px 12px",
+        fontSize: "13px", fontWeight: 500, textDecoration: "none",
+        color: isActive ? "var(--foreground, #f8fafc)" : "color-mix(in srgb, var(--foreground, #f8fafc) 80%, transparent)",
+        background: isActive ? "var(--accent, rgba(125,211,252,0.12))" : "transparent",
+        borderRadius: "8px",
+      }}
+    >
+      <span>⚡ Workflows</span>
+    </a>
+  );
+}
