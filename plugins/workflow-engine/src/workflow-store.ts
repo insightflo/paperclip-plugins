@@ -1,0 +1,416 @@
+import type { PluginContext, PluginEntityRecord } from "@paperclipai/plugin-sdk";
+import { randomUUID } from "node:crypto";
+
+import { ENTITY_TYPES } from "./constants.js";
+import type { WorkflowStep } from "./dag-engine.js";
+
+export interface WorkflowDefinition extends Record<string, unknown> {
+  name: string;
+  description: string;
+  companyId: string;
+  status: "active" | "paused" | "archived";
+  steps: WorkflowStep[];
+  timeoutMinutes?: number;
+  maxDailyRuns?: number;
+  maxConcurrentRuns?: number;
+  triggerLabels?: string[];
+  labelIds?: string[];
+  schedule?: string;
+  timezone?: string;
+  deadlineTime?: string;
+  lastScheduledRunAt?: string;
+  projectId?: string;
+  goalId?: string;
+}
+
+export interface WorkflowRun extends Record<string, unknown> {
+  workflowId: string;
+  workflowName: string;
+  companyId: string;
+  status: "running" | "completed" | "failed" | "aborted" | "timed-out";
+  parentIssueId?: string;
+  runLabel?: string;
+  startedAt: string;
+  completedAt?: string;
+}
+
+export interface WorkflowStepRun extends Record<string, unknown> {
+  runId: string;
+  stepId: string;
+  issueId?: string;
+  agentName: string;
+  status:
+    | "backlog"
+    | "todo"
+    | "in_progress"
+    | "done"
+    | "failed"
+    | "skipped"
+    | "escalated";
+  retryCount: number;
+  startedAt?: string;
+  completedAt?: string;
+  sessionId?: string;
+}
+
+type TypedEntityRecord<T> = Omit<PluginEntityRecord, "data"> & { data: T };
+type PluginEntityScopeKind = "instance" | "company" | "project" | "issue";
+
+function toTypedRecord<T>(
+  record: PluginEntityRecord,
+  entityType: string,
+): TypedEntityRecord<T> {
+  if (record.entityType !== entityType) {
+    throw new Error(`Expected entity type "${entityType}", got "${record.entityType}"`);
+  }
+
+  return record as TypedEntityRecord<T>;
+}
+
+function toEntityData<T>(value: T): Record<string, unknown> {
+  return value as Record<string, unknown>;
+}
+
+function toScopeKind(value: unknown): PluginEntityScopeKind {
+  if (value === "instance" || value === "company" || value === "project" || value === "issue") {
+    return value;
+  }
+
+  return "company";
+}
+
+function makeExternalId(prefix: string): string {
+  return `${prefix}:${Date.now()}:${randomUUID()}`;
+}
+
+function mergeEntityData<T extends object>(
+  record: PluginEntityRecord,
+  updates: Partial<T>,
+): T {
+  const merged = {
+    ...(record.data as T),
+    ...updates,
+  };
+  // Remove keys explicitly set to undefined so cleared fields are stored as absent
+  for (const key of Object.keys(merged) as (keyof typeof merged)[]) {
+    if (merged[key] === undefined) {
+      delete merged[key];
+    }
+  }
+  return merged;
+}
+
+async function getEntityByType<T>(
+  ctx: PluginContext,
+  id: string,
+  entityType: string,
+): Promise<TypedEntityRecord<T> | null> {
+  const pageSize = 200;
+  let offset = 0;
+
+  while (true) {
+    const listed = await ctx.entities.list({
+      entityType,
+      limit: pageSize,
+      offset,
+    });
+
+    const matched = listed.find(
+      (record: PluginEntityRecord) => record.id === id && record.entityType === entityType,
+    ) ?? null;
+
+    if (matched) {
+      return toTypedRecord<T>(matched, entityType);
+    }
+
+    if (listed.length < pageSize) {
+      return null;
+    }
+
+    offset += listed.length;
+  }
+}
+
+async function requireEntityByType<T>(
+  ctx: PluginContext,
+  id: string,
+  entityType: string,
+  label: string,
+): Promise<TypedEntityRecord<T>> {
+  const record = await getEntityByType<T>(ctx, id, entityType);
+
+  if (!record) {
+    throw new Error(`${label} not found: ${id}`);
+  }
+
+  return record;
+}
+
+export async function createWorkflowDefinition(
+  ctx: PluginContext,
+  def: WorkflowDefinition,
+): Promise<PluginEntityRecord> {
+  return await ctx.entities.upsert({
+    entityType: ENTITY_TYPES.workflowDefinition,
+    scopeKind: "company",
+    scopeId: def.companyId,
+    externalId: makeExternalId(`workflow-definition:${def.companyId}`),
+    title: def.name,
+    status: def.status,
+    data: toEntityData(def),
+  });
+}
+
+export async function getWorkflowDefinition(
+  ctx: PluginContext,
+  id: string,
+): Promise<(PluginEntityRecord & { data: WorkflowDefinition }) | null> {
+  return await getEntityByType<WorkflowDefinition>(
+    ctx,
+    id,
+    ENTITY_TYPES.workflowDefinition,
+  );
+}
+
+export async function listWorkflowDefinitions(
+  ctx: PluginContext,
+  companyId: string,
+): Promise<PluginEntityRecord[]> {
+  return await ctx.entities.list({
+    entityType: ENTITY_TYPES.workflowDefinition,
+    scopeKind: "company",
+    scopeId: companyId,
+  });
+}
+
+export async function updateWorkflowDefinition(
+  ctx: PluginContext,
+  id: string,
+  updates: Partial<WorkflowDefinition>,
+): Promise<PluginEntityRecord> {
+  const current = await requireEntityByType<WorkflowDefinition>(
+    ctx,
+    id,
+    ENTITY_TYPES.workflowDefinition,
+    "Workflow definition",
+  );
+  const data = mergeEntityData<WorkflowDefinition>(current, updates);
+
+  return await ctx.entities.upsert({
+    entityType: current.entityType,
+    scopeKind: toScopeKind(current.scopeKind),
+    scopeId: current.scopeId ?? undefined,
+    externalId: current.externalId ?? `workflow-definition:${current.id}`,
+    title: data.name,
+    status: data.status,
+    data: toEntityData(data),
+  });
+}
+
+export async function createWorkflowRun(
+  ctx: PluginContext,
+  run: WorkflowRun,
+): Promise<PluginEntityRecord> {
+  return await ctx.entities.upsert({
+    entityType: ENTITY_TYPES.workflowRun,
+    scopeKind: "company",
+    scopeId: run.companyId,
+    externalId: makeExternalId(`workflow-run:${run.companyId}:${run.workflowId}`),
+    title: `${run.workflowName} run`,
+    status: run.status,
+    data: toEntityData(run),
+  });
+}
+
+export async function getWorkflowRun(
+  ctx: PluginContext,
+  id: string,
+): Promise<(PluginEntityRecord & { data: WorkflowRun }) | null> {
+  return await getEntityByType<WorkflowRun>(ctx, id, ENTITY_TYPES.workflowRun);
+}
+
+export async function listActiveRuns(
+  ctx: PluginContext,
+  companyId: string,
+): Promise<PluginEntityRecord[]> {
+  const runs = await ctx.entities.list({
+    entityType: ENTITY_TYPES.workflowRun,
+    scopeKind: "company",
+    scopeId: companyId,
+  });
+
+  return runs.filter((run: PluginEntityRecord) => run.status === "running");
+}
+
+export async function listWorkflowRunsByWorkflowId(
+  ctx: PluginContext,
+  companyId: string,
+  workflowId: string,
+): Promise<PluginEntityRecord[]> {
+  const runs = await ctx.entities.list({
+    entityType: ENTITY_TYPES.workflowRun,
+    scopeKind: "company",
+    scopeId: companyId,
+  });
+
+  return runs.filter(
+    (run: PluginEntityRecord) =>
+      (run.data as Partial<WorkflowRun>).workflowId === workflowId,
+  );
+}
+
+export async function updateWorkflowRun(
+  ctx: PluginContext,
+  id: string,
+  updates: Partial<WorkflowRun>,
+): Promise<PluginEntityRecord> {
+  const current = await requireEntityByType<WorkflowRun>(
+    ctx,
+    id,
+    ENTITY_TYPES.workflowRun,
+    "Workflow run",
+  );
+  const data = mergeEntityData<WorkflowRun>(current, updates);
+
+  return await ctx.entities.upsert({
+    entityType: current.entityType,
+    scopeKind: toScopeKind(current.scopeKind),
+    scopeId: current.scopeId ?? undefined,
+    externalId: current.externalId ?? `workflow-run:${current.id}`,
+    title: `${data.workflowName} run`,
+    status: data.status,
+    data: toEntityData(data),
+  });
+}
+
+export async function createStepRun(
+  ctx: PluginContext,
+  companyId: string,
+  stepRun: WorkflowStepRun,
+): Promise<PluginEntityRecord> {
+  return await ctx.entities.upsert({
+    entityType: ENTITY_TYPES.workflowStepRun,
+    scopeKind: "company",
+    scopeId: companyId,
+    externalId: `${stepRun.runId}:${stepRun.stepId}`,
+    title: stepRun.stepId,
+    status: stepRun.status,
+    data: toEntityData(stepRun),
+  });
+}
+
+export async function getStepRun(
+  ctx: PluginContext,
+  id: string,
+): Promise<(PluginEntityRecord & { data: WorkflowStepRun }) | null> {
+  return await getEntityByType<WorkflowStepRun>(
+    ctx,
+    id,
+    ENTITY_TYPES.workflowStepRun,
+  );
+}
+
+export async function listStepRuns(
+  ctx: PluginContext,
+  runId: string,
+  companyId: string,
+): Promise<PluginEntityRecord[]> {
+  const stepRuns = await ctx.entities.list({
+    entityType: ENTITY_TYPES.workflowStepRun,
+    scopeKind: "company",
+    scopeId: companyId,
+  });
+
+  return stepRuns.filter(
+    (stepRun: PluginEntityRecord) =>
+      (stepRun.data as Partial<WorkflowStepRun>).runId === runId,
+  );
+}
+
+export async function findStepRunByIssueId(
+  ctx: PluginContext,
+  issueId: string,
+  companyId: string,
+): Promise<PluginEntityRecord | null> {
+  const stepRuns = await ctx.entities.list({
+    entityType: ENTITY_TYPES.workflowStepRun,
+    scopeKind: "company",
+    scopeId: companyId,
+  });
+
+  return (
+    stepRuns.find(
+      (stepRun: PluginEntityRecord) =>
+        (stepRun.data as Partial<WorkflowStepRun>).issueId === issueId,
+    ) ?? null
+  );
+}
+
+export async function updateStepRun(
+  ctx: PluginContext,
+  id: string,
+  updates: Partial<WorkflowStepRun>,
+): Promise<PluginEntityRecord> {
+  const current = await requireEntityByType<WorkflowStepRun>(
+    ctx,
+    id,
+    ENTITY_TYPES.workflowStepRun,
+    "Workflow step run",
+  );
+  const data = mergeEntityData<WorkflowStepRun>(current, updates);
+
+  return await ctx.entities.upsert({
+    entityType: current.entityType,
+    scopeKind: toScopeKind(current.scopeKind),
+    scopeId: current.scopeId ?? undefined,
+    externalId: current.externalId ?? `${data.runId}:${data.stepId}`,
+    title: data.stepId,
+    status: data.status,
+    data: toEntityData(data),
+  });
+}
+
+export async function checkIdempotency(
+  ctx: PluginContext,
+  key: string,
+  companyId: string,
+): Promise<boolean> {
+  const pageSize = 500;
+  let offset = 0;
+
+  while (true) {
+    const page = await ctx.entities.list({
+      entityType: ENTITY_TYPES.idempotencyKey,
+      scopeKind: "company",
+      scopeId: companyId,
+      limit: pageSize,
+      offset,
+    });
+
+    if (page.some((record: PluginEntityRecord) => record.externalId === key)) {
+      return true;
+    }
+
+    if (page.length < pageSize) {
+      return false;
+    }
+
+    offset += page.length;
+  }
+}
+
+export async function markIdempotency(
+  ctx: PluginContext,
+  key: string,
+  companyId: string,
+): Promise<void> {
+  await ctx.entities.upsert({
+    entityType: ENTITY_TYPES.idempotencyKey,
+    scopeKind: "company",
+    scopeId: companyId,
+    externalId: key,
+    data: {
+      processedAt: new Date().toISOString(),
+    },
+  });
+}
