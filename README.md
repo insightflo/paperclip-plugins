@@ -6,6 +6,28 @@ Community plugins for the [Paperclip](https://github.com/paperclipai/paperclip) 
 
 ---
 
+## Quick Install
+
+```bash
+git clone https://github.com/insightflo/paperclip-plugins.git
+cd paperclip-plugins
+./install.sh http://localhost:3100   # Paperclip API 주소로 변경
+```
+
+빌드 불필요 — 클론 후 스크립트 실행으로 5개 플러그인 전부 설치됩니다.
+
+개별 설치:
+
+```bash
+paperclipai plugin install --api-base http://localhost:3100 ./knowledge-base
+paperclipai plugin install --api-base http://localhost:3100 ./system-garden
+paperclipai plugin install --api-base http://localhost:3100 ./tool-registry
+paperclipai plugin install --api-base http://localhost:3100 ./work-board
+paperclipai plugin install --api-base http://localhost:3100 ./workflow-engine
+```
+
+---
+
 ## Plugins
 
 | Plugin | Description |
