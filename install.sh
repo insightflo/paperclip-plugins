@@ -6,7 +6,7 @@
 API="${1:-http://localhost:3100}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-PLUGINS=(knowledge-base system-garden tool-registry work-board workflow-engine)
+PLUGINS=(knowledge-base service-request-bridge system-garden tool-registry work-board workflow-engine)
 
 echo "Paperclip Plugins 설치"
 echo "API: $API"

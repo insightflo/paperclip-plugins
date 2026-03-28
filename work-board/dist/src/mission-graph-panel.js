@@ -226,6 +226,8 @@ function graphStyle(kind) {
 export function MissionGraphPanel({ graph, companyPrefix, }) {
     const [graphMode, setGraphMode] = useState("mission");
     const [selectedNodeId, setSelectedNodeId] = useState(null);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [searchNotice, setSearchNotice] = useState(null);
     const [graphError, setGraphError] = useState(null);
     const [collapsed, setCollapsed] = useState(false);
     const [visibleMode, setVisibleMode] = useState(false);
@@ -279,6 +281,27 @@ export function MissionGraphPanel({ graph, companyPrefix, }) {
         setTrailNodeIds((current) => current.filter((id) => visibleNodeIdSet.has(id)));
     }, [visibleGraph.nodes]);
     const selectedNode = useMemo(() => visibleGraph.nodes.find((node) => node.id === selectedNodeId) ?? null, [selectedNodeId, visibleGraph.nodes]);
+    const selectNode = (nodeId) => {
+        if (!visibleModeRef.current || !instanceRef.current) {
+            setSelectedNodeId(nodeId);
+            return;
+        }
+        setTrailNodeIds((current) => {
+            const exists = current.includes(nodeId);
+            const next = exists
+                ? current.filter((currentNodeId) => currentNodeId !== nodeId)
+                : [...current.filter((currentNodeId) => currentNodeId !== nodeId), nodeId];
+            if (next.length > 0) {
+                applyTrailHighlight(instanceRef.current, next, visibleGraph.nodes, visibleGraph.edges, adjacency);
+                setSelectedNodeId(next[next.length - 1] ?? null);
+            }
+            else {
+                clearHighlight(instanceRef.current);
+                setSelectedNodeId(null);
+            }
+            return next;
+        });
+    };
     useEffect(() => {
         if (!visibleGraph.nodes.length) {
             setSelectedNodeId(null);
@@ -420,15 +443,7 @@ export function MissionGraphPanel({ graph, companyPrefix, }) {
                 },
             });
             instance.on("tap", "node", (event) => {
-                const nodeId = event.target.id();
-                setSelectedNodeId(nodeId);
-                if (!visibleModeRef.current || !instanceRef.current)
-                    return;
-                setTrailNodeIds((current) => {
-                    const next = [...current.filter((currentNodeId) => currentNodeId !== nodeId), nodeId];
-                    applyTrailHighlight(instanceRef.current, next, visibleGraph.nodes, visibleGraph.edges, adjacency);
-                    return next;
-                });
+                selectNode(event.target.id());
             });
             instance.on("mouseover", "node", (event) => {
                 if (!instanceRef.current)
@@ -474,12 +489,54 @@ export function MissionGraphPanel({ graph, companyPrefix, }) {
             [key]: !current[key],
         }));
     };
+    const searchIssues = () => {
+        const query = searchQuery.trim();
+        if (!query) {
+            setSearchNotice("이슈 번호를 입력해 주세요.");
+            return;
+        }
+        const normalizedQuery = query.toLowerCase();
+        const issueNodes = activeGraph.graph.nodes.filter((node) => node.kind === "issue");
+        const exactMatch = issueNodes.find((node) => (node.identifier ?? "").toLowerCase() === normalizedQuery);
+        const partialMatch = issueNodes.find((node) => (node.identifier ?? "").toLowerCase().includes(normalizedQuery));
+        const match = exactMatch ?? partialMatch ?? null;
+        if (!match) {
+            setSearchNotice(`"${query}" 이슈를 현재 ${graphMode} 그래프에서 찾지 못했습니다.`);
+            return;
+        }
+        const requiredFilter = nodeFilterKind(match);
+        if (!filters[requiredFilter]) {
+            setFilters((current) => ({
+                ...current,
+                [requiredFilter]: true,
+            }));
+        }
+        setSearchNotice(`${match.identifier ?? match.label} 선택됨`);
+        selectNode(match.id);
+    };
     return (_jsxs("section", { style: {
             ...panelStyle,
             padding: "14px",
             display: "grid",
             gap: "12px",
-        }, children: [_jsxs("div", { style: { display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "center", flexWrap: "wrap" }, children: [_jsxs("div", { style: { display: "grid", gap: "4px" }, children: [_jsx("strong", { style: { fontSize: "18px" }, children: "Mission Graph" }), _jsxs("div", { style: mutedStyle, children: [graphMode === "spawn" ? "spawn" : "mission", " \u00B7 seed ", activeGraph.seedIssueIds.length, " \u00B7 visible ", visibleGraph.nodes.length, " \u00B7 edges ", visibleGraph.edges.length] })] }), _jsxs("div", { style: { display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }, children: [_jsxs("div", { style: { display: "flex", gap: "6px" }, children: [_jsx("button", { type: "button", style: toggleButtonStyle(graphMode === "mission"), onClick: () => setGraphMode("mission"), children: "mission graph" }), _jsx("button", { type: "button", style: toggleButtonStyle(graphMode === "spawn"), onClick: () => setGraphMode("spawn"), children: "spawn graph" })] }), _jsx("div", { style: { ...mutedStyle, padding: "4px 8px", borderRadius: "999px", background: "color-mix(in srgb, var(--muted, #e5e7eb) 52%, transparent)" }, children: graphMode === "spawn" ? "spawn lineage only" : "금주 seed + related only" }), _jsx("button", { type: "button", style: toggleButtonStyle(collapsed), onClick: () => setCollapsed((value) => !value), children: collapsed ? "펼치기" : "접기" })] })] }), _jsxs("div", { style: { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }, children: [["parent", "child", "standalone", "agent"].map((key) => (_jsxs("button", { type: "button", style: toggleButtonStyle(filters[key]), onClick: () => updateFilter(key), children: [key, " ", filterSummary[key]] }, key))), _jsxs("button", { type: "button", style: toggleButtonStyle(visibleMode), onClick: () => setVisibleMode((value) => !value), children: ["visible mode ", visibleMode ? "on" : "off"] }), _jsx("button", { type: "button", style: toggleButtonStyle(trailNodeIds.length > 0), onClick: clearTrail, disabled: trailNodeIds.length === 0, children: "trail clear" })] }), filterNotice ? _jsx("div", { style: mutedStyle, children: filterNotice }) : null, visibleMode && trailNodeIds.length > 0 ? (_jsxs("div", { style: {
+        }, children: [_jsxs("div", { style: { display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "center", flexWrap: "wrap" }, children: [_jsxs("div", { style: { display: "grid", gap: "4px" }, children: [_jsx("strong", { style: { fontSize: "18px" }, children: "Mission Graph" }), _jsxs("div", { style: mutedStyle, children: [graphMode === "spawn" ? "spawn" : "mission", " \u00B7 seed ", activeGraph.seedIssueIds.length, " \u00B7 visible ", visibleGraph.nodes.length, " \u00B7 edges ", visibleGraph.edges.length] })] }), _jsxs("div", { style: { display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }, children: [_jsxs("div", { style: { display: "flex", gap: "6px" }, children: [_jsx("button", { type: "button", style: toggleButtonStyle(graphMode === "mission"), onClick: () => setGraphMode("mission"), children: "mission graph" }), _jsx("button", { type: "button", style: toggleButtonStyle(graphMode === "spawn"), onClick: () => setGraphMode("spawn"), children: "spawn graph" })] }), _jsx("div", { style: { ...mutedStyle, padding: "4px 8px", borderRadius: "999px", background: "color-mix(in srgb, var(--muted, #e5e7eb) 52%, transparent)" }, children: graphMode === "spawn" ? "spawn lineage only" : "금주 seed + related only" }), _jsx("button", { type: "button", style: toggleButtonStyle(collapsed), onClick: () => setCollapsed((value) => !value), children: collapsed ? "펼치기" : "접기" })] })] }), _jsxs("div", { style: { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }, children: [["parent", "child", "standalone", "agent"].map((key) => (_jsxs("button", { type: "button", style: toggleButtonStyle(filters[key]), onClick: () => updateFilter(key), children: [key, " ", filterSummary[key]] }, key))), _jsxs("button", { type: "button", style: toggleButtonStyle(visibleMode), onClick: () => setVisibleMode((value) => !value), children: ["visible mode ", visibleMode ? "on" : "off"] }), _jsx("button", { type: "button", style: toggleButtonStyle(trailNodeIds.length > 0), onClick: clearTrail, disabled: trailNodeIds.length === 0, children: "trail clear" })] }), _jsxs("div", { style: { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }, children: [_jsx("input", { type: "search", value: searchQuery, onChange: (event) => {
+                            setSearchQuery(event.target.value);
+                            if (searchNotice)
+                                setSearchNotice(null);
+                        }, onKeyDown: (event) => {
+                            if (event.key === "Enter") {
+                                event.preventDefault();
+                                searchIssues();
+                            }
+                        }, placeholder: "issue \uAC80\uC0C9 \uC608: cmpa-156", "aria-label": "Search issue in mission graph", style: {
+                            minWidth: "240px",
+                            padding: "8px 12px",
+                            borderRadius: "12px",
+                            border: "1px solid color-mix(in srgb, var(--border, #d4d4d8) 76%, transparent)",
+                            background: "color-mix(in srgb, var(--card, #ffffff) 92%, transparent)",
+                            color: "inherit",
+                            fontSize: "13px",
+                        } }), _jsx("button", { type: "button", style: toggleButtonStyle(false), onClick: searchIssues, children: "issue \uCC3E\uAE30" })] }), searchNotice ? _jsx("div", { style: mutedStyle, children: searchNotice }) : null, filterNotice ? _jsx("div", { style: mutedStyle, children: filterNotice }) : null, visibleMode && trailNodeIds.length > 0 ? (_jsxs("div", { style: {
                     display: "flex",
                     gap: "6px",
                     flexWrap: "nowrap",

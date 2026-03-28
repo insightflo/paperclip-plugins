@@ -30422,6 +30422,8 @@ function MissionGraphPanel({
 }) {
   const [graphMode, setGraphMode] = useState("mission");
   const [selectedNodeId, setSelectedNodeId] = useState(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchNotice, setSearchNotice] = useState(null);
   const [graphError, setGraphError] = useState(null);
   const [collapsed, setCollapsed] = useState(false);
   const [visibleMode, setVisibleMode] = useState(false);
@@ -30489,6 +30491,24 @@ function MissionGraphPanel({
     () => visibleGraph.nodes.find((node) => node.id === selectedNodeId) ?? null,
     [selectedNodeId, visibleGraph.nodes]
   );
+  const selectNode = (nodeId) => {
+    if (!visibleModeRef.current || !instanceRef.current) {
+      setSelectedNodeId(nodeId);
+      return;
+    }
+    setTrailNodeIds((current) => {
+      const exists = current.includes(nodeId);
+      const next = exists ? current.filter((currentNodeId) => currentNodeId !== nodeId) : [...current.filter((currentNodeId) => currentNodeId !== nodeId), nodeId];
+      if (next.length > 0) {
+        applyTrailHighlight(instanceRef.current, next, visibleGraph.nodes, visibleGraph.edges, adjacency);
+        setSelectedNodeId(next[next.length - 1] ?? null);
+      } else {
+        clearHighlight(instanceRef.current);
+        setSelectedNodeId(null);
+      }
+      return next;
+    });
+  };
   useEffect(() => {
     if (!visibleGraph.nodes.length) {
       setSelectedNodeId(null);
@@ -30628,14 +30648,7 @@ function MissionGraphPanel({
         }
       });
       instance.on("tap", "node", (event3) => {
-        const nodeId = event3.target.id();
-        setSelectedNodeId(nodeId);
-        if (!visibleModeRef.current || !instanceRef.current) return;
-        setTrailNodeIds((current) => {
-          const next = [...current.filter((currentNodeId) => currentNodeId !== nodeId), nodeId];
-          applyTrailHighlight(instanceRef.current, next, visibleGraph.nodes, visibleGraph.edges, adjacency);
-          return next;
-        });
+        selectNode(event3.target.id());
       });
       instance.on("mouseover", "node", (event3) => {
         if (!instanceRef.current) return;
@@ -30674,6 +30687,31 @@ function MissionGraphPanel({
       ...current,
       [key]: !current[key]
     }));
+  };
+  const searchIssues = () => {
+    const query = searchQuery.trim();
+    if (!query) {
+      setSearchNotice("\uC774\uC288 \uBC88\uD638\uB97C \uC785\uB825\uD574 \uC8FC\uC138\uC694.");
+      return;
+    }
+    const normalizedQuery = query.toLowerCase();
+    const issueNodes = activeGraph.graph.nodes.filter((node) => node.kind === "issue");
+    const exactMatch = issueNodes.find((node) => (node.identifier ?? "").toLowerCase() === normalizedQuery);
+    const partialMatch = issueNodes.find((node) => (node.identifier ?? "").toLowerCase().includes(normalizedQuery));
+    const match2 = exactMatch ?? partialMatch ?? null;
+    if (!match2) {
+      setSearchNotice(`"${query}" \uC774\uC288\uB97C \uD604\uC7AC ${graphMode} \uADF8\uB798\uD504\uC5D0\uC11C \uCC3E\uC9C0 \uBABB\uD588\uC2B5\uB2C8\uB2E4.`);
+      return;
+    }
+    const requiredFilter = nodeFilterKind(match2);
+    if (!filters[requiredFilter]) {
+      setFilters((current) => ({
+        ...current,
+        [requiredFilter]: true
+      }));
+    }
+    setSearchNotice(`${match2.identifier ?? match2.label} \uC120\uD0DD\uB428`);
+    selectNode(match2.id);
   };
   return /* @__PURE__ */ jsxs(
     "section",
@@ -30719,6 +30757,38 @@ function MissionGraphPanel({
           ] }),
           /* @__PURE__ */ jsx("button", { type: "button", style: toggleButtonStyle(trailNodeIds.length > 0), onClick: clearTrail, disabled: trailNodeIds.length === 0, children: "trail clear" })
         ] }),
+        /* @__PURE__ */ jsxs("div", { style: { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }, children: [
+          /* @__PURE__ */ jsx(
+            "input",
+            {
+              type: "search",
+              value: searchQuery,
+              onChange: (event3) => {
+                setSearchQuery(event3.target.value);
+                if (searchNotice) setSearchNotice(null);
+              },
+              onKeyDown: (event3) => {
+                if (event3.key === "Enter") {
+                  event3.preventDefault();
+                  searchIssues();
+                }
+              },
+              placeholder: "issue \uAC80\uC0C9 \uC608: cmpa-156",
+              "aria-label": "Search issue in mission graph",
+              style: {
+                minWidth: "240px",
+                padding: "8px 12px",
+                borderRadius: "12px",
+                border: "1px solid color-mix(in srgb, var(--border, #d4d4d8) 76%, transparent)",
+                background: "color-mix(in srgb, var(--card, #ffffff) 92%, transparent)",
+                color: "inherit",
+                fontSize: "13px"
+              }
+            }
+          ),
+          /* @__PURE__ */ jsx("button", { type: "button", style: toggleButtonStyle(false), onClick: searchIssues, children: "issue \uCC3E\uAE30" })
+        ] }),
+        searchNotice ? /* @__PURE__ */ jsx("div", { style: mutedStyle, children: searchNotice }) : null,
         filterNotice ? /* @__PURE__ */ jsx("div", { style: mutedStyle, children: filterNotice }) : null,
         visibleMode && trailNodeIds.length > 0 ? /* @__PURE__ */ jsxs(
           "div",

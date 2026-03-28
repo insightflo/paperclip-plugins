@@ -403,6 +403,8 @@ export function MissionGraphPanel({
 }) {
   const [graphMode, setGraphMode] = useState<"mission" | "spawn">("mission");
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchNotice, setSearchNotice] = useState<string | null>(null);
   const [graphError, setGraphError] = useState<string | null>(null);
   const [collapsed, setCollapsed] = useState(false);
   const [visibleMode, setVisibleMode] = useState(false);
@@ -477,6 +479,30 @@ export function MissionGraphPanel({
     () => visibleGraph.nodes.find((node) => node.id === selectedNodeId) ?? null,
     [selectedNodeId, visibleGraph.nodes],
   );
+
+  const selectNode = (nodeId: string) => {
+    if (!visibleModeRef.current || !instanceRef.current) {
+      setSelectedNodeId(nodeId);
+      return;
+    }
+
+    setTrailNodeIds((current) => {
+      const exists = current.includes(nodeId);
+      const next = exists
+        ? current.filter((currentNodeId) => currentNodeId !== nodeId)
+        : [...current.filter((currentNodeId) => currentNodeId !== nodeId), nodeId];
+
+      if (next.length > 0) {
+        applyTrailHighlight(instanceRef.current!, next, visibleGraph.nodes, visibleGraph.edges, adjacency);
+        setSelectedNodeId(next[next.length - 1] ?? null);
+      } else {
+        clearHighlight(instanceRef.current!);
+        setSelectedNodeId(null);
+      }
+
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (!visibleGraph.nodes.length) {
@@ -629,16 +655,7 @@ export function MissionGraphPanel({
       });
 
       instance.on("tap", "node", (event) => {
-        const nodeId = event.target.id();
-        setSelectedNodeId(nodeId);
-
-        if (!visibleModeRef.current || !instanceRef.current) return;
-
-        setTrailNodeIds((current) => {
-          const next = [...current.filter((currentNodeId) => currentNodeId !== nodeId), nodeId];
-          applyTrailHighlight(instanceRef.current!, next, visibleGraph.nodes, visibleGraph.edges, adjacency);
-          return next;
-        });
+        selectNode(event.target.id());
       });
 
       instance.on("mouseover", "node", (event) => {
@@ -685,6 +702,36 @@ export function MissionGraphPanel({
       ...current,
       [key]: !current[key],
     }));
+  };
+
+  const searchIssues = () => {
+    const query = searchQuery.trim();
+    if (!query) {
+      setSearchNotice("이슈 번호를 입력해 주세요.");
+      return;
+    }
+
+    const normalizedQuery = query.toLowerCase();
+    const issueNodes = activeGraph.graph.nodes.filter((node) => node.kind === "issue");
+    const exactMatch = issueNodes.find((node) => (node.identifier ?? "").toLowerCase() === normalizedQuery);
+    const partialMatch = issueNodes.find((node) => (node.identifier ?? "").toLowerCase().includes(normalizedQuery));
+    const match = exactMatch ?? partialMatch ?? null;
+
+    if (!match) {
+      setSearchNotice(`"${query}" 이슈를 현재 ${graphMode} 그래프에서 찾지 못했습니다.`);
+      return;
+    }
+
+    const requiredFilter = nodeFilterKind(match);
+    if (!filters[requiredFilter]) {
+      setFilters((current) => ({
+        ...current,
+        [requiredFilter]: true,
+      }));
+    }
+
+    setSearchNotice(`${match.identifier ?? match.label} 선택됨`);
+    selectNode(match.id);
   };
 
   return (
@@ -734,6 +781,37 @@ export function MissionGraphPanel({
           trail clear
         </button>
       </div>
+      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+        <input
+          type="search"
+          value={searchQuery}
+          onChange={(event) => {
+            setSearchQuery(event.target.value);
+            if (searchNotice) setSearchNotice(null);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.preventDefault();
+              searchIssues();
+            }
+          }}
+          placeholder="issue 검색 예: cmpa-156"
+          aria-label="Search issue in mission graph"
+          style={{
+            minWidth: "240px",
+            padding: "8px 12px",
+            borderRadius: "12px",
+            border: "1px solid color-mix(in srgb, var(--border, #d4d4d8) 76%, transparent)",
+            background: "color-mix(in srgb, var(--card, #ffffff) 92%, transparent)",
+            color: "inherit",
+            fontSize: "13px",
+          }}
+        />
+        <button type="button" style={toggleButtonStyle(false)} onClick={searchIssues}>
+          issue 찾기
+        </button>
+      </div>
+      {searchNotice ? <div style={mutedStyle}>{searchNotice}</div> : null}
       {filterNotice ? <div style={mutedStyle}>{filterNotice}</div> : null}
       {visibleMode && trailNodeIds.length > 0 ? (
         <div

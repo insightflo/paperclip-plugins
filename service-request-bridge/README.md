@@ -21,5 +21,5 @@ pnpm build
 ## Install (example)
 
 ```bash
-paperclipai plugin install ./plugins/service-request-bridge
+paperclipai plugin install --api-base http://localhost:3100 ./plugins/service-request-bridge
 ```
