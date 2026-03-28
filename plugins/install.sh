@@ -14,6 +14,14 @@ echo ""
 
 for plugin in "${PLUGINS[@]}"; do
   echo "→ $plugin 설치 중..."
+  if [ ! -d "$SCRIPT_DIR/$plugin/dist" ]; then
+    echo "  - dist 없음, 먼저 빌드 중..."
+    if ! (cd "$SCRIPT_DIR/$plugin" && pnpm build); then
+      echo "  ❌ $plugin 빌드 실패"
+      echo ""
+      continue
+    fi
+  fi
   if paperclipai plugin install --api-base "$API" "$SCRIPT_DIR/$plugin" 2>&1; then
     echo "  ✅ $plugin 완료"
   else

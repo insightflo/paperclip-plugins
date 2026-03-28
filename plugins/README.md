@@ -14,7 +14,7 @@ cd paperclip-plugins
 ./install.sh http://localhost:3100   # Paperclip API 주소로 변경
 ```
 
-빌드 불필요 — 클론 후 스크립트 실행으로 5개 플러그인 전부 설치됩니다.
+빌드 산출물이 포함된 상태로 배포되며, 스크립트는 `dist/`가 없을 때만 먼저 빌드한 뒤 설치합니다.
 
 개별 설치:
 
