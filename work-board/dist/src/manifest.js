@@ -12,6 +12,9 @@ const manifest = {
     categories: ["ui"],
     capabilities: [
         "issues.read",
+        "projects.read",
+        "agents.read",
+        "issue.comments.read",
         "ui.page.register",
         "ui.sidebar.register",
         "ui.dashboardWidget.register"

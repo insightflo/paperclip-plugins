@@ -321,19 +321,76 @@ var stepRowStyle = {
 function emptyStep() {
   return { id: "", title: "", description: "", type: "agent", toolName: "", toolArgs: "{}", agentName: "", tools: "", dependsOn: "", onFailure: "" };
 }
+var collapsedStepHeaderStyle = {
+  display: "flex",
+  alignItems: "center",
+  gap: "10px",
+  padding: "10px 12px",
+  border: "1px solid var(--border, #334155)",
+  borderRadius: "8px",
+  background: "var(--background, #020617)",
+  cursor: "pointer",
+  fontSize: "13px",
+  userSelect: "none"
+};
+var selectedStepOutlineStyle = {
+  outline: "2px solid color-mix(in srgb, var(--foreground, #f8fafc) 40%, transparent)",
+  outlineOffset: "-2px"
+};
 function StepEditor({
   steps,
   onChange
 }) {
+  const [collapsedSet, setCollapsedSet] = useState(() => new Set(steps.map((_, i) => i)));
+  const [selectedIndex, setSelectedIndex] = useState(null);
+  function toggleCollapse(index) {
+    setCollapsedSet((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        next.add(index);
+      }
+      return next;
+    });
+  }
   function update(index, patch) {
     const next = steps.map((s, i) => i === index ? { ...s, ...patch } : s);
     onChange(next);
   }
   function remove(index) {
     onChange(steps.filter((_, i) => i !== index));
+    setCollapsedSet((prev) => {
+      const next = /* @__PURE__ */ new Set();
+      for (const idx of prev) {
+        if (idx < index) next.add(idx);
+        else if (idx > index) next.add(idx - 1);
+      }
+      return next;
+    });
+    if (selectedIndex === index) setSelectedIndex(null);
+    else if (selectedIndex !== null && selectedIndex > index) setSelectedIndex(selectedIndex - 1);
   }
   function add() {
-    onChange([...steps, emptyStep()]);
+    if (selectedIndex !== null && selectedIndex >= 0 && selectedIndex < steps.length) {
+      const afterStep = steps[selectedIndex];
+      const newStep = { ...emptyStep(), dependsOn: afterStep.id.trim() };
+      const insertAt = selectedIndex + 1;
+      const next = [...steps.slice(0, insertAt), newStep, ...steps.slice(insertAt)];
+      onChange(next);
+      setCollapsedSet((prev) => {
+        const shifted = /* @__PURE__ */ new Set();
+        for (const idx of prev) {
+          if (idx < insertAt) shifted.add(idx);
+          else shifted.add(idx + 1);
+        }
+        return shifted;
+      });
+      setSelectedIndex(insertAt);
+    } else {
+      onChange([...steps, emptyStep()]);
+      setSelectedIndex(steps.length);
+    }
   }
   const allIds = steps.map((s) => s.id).filter(Boolean);
   return /* @__PURE__ */ jsxs("div", { style: { display: "grid", gap: "10px" }, children: [
@@ -343,68 +400,155 @@ function StepEditor({
         steps.length,
         ")"
       ] }),
-      /* @__PURE__ */ jsx("button", { type: "button", style: buttonStyle, onClick: add, children: "+ Add Step" })
-    ] }),
-    steps.map((step, i) => /* @__PURE__ */ jsxs("div", { style: stepCardStyle, children: [
-      /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" }, children: [
-        /* @__PURE__ */ jsxs("span", { style: { fontSize: "12px", fontWeight: 600, color: "var(--muted-foreground, #94a3b8)" }, children: [
-          "Step ",
-          i + 1,
-          " \u2014 ",
-          step.type === "tool" ? "\u{1F527} Tool" : "\u{1F916} Agent"
+      /* @__PURE__ */ jsxs("div", { style: { display: "flex", gap: "6px", alignItems: "center" }, children: [
+        selectedIndex !== null && /* @__PURE__ */ jsxs("span", { style: { fontSize: "11px", color: "var(--muted-foreground, #94a3b8)" }, children: [
+          "insert after step ",
+          selectedIndex + 1
         ] }),
-        /* @__PURE__ */ jsx("button", { type: "button", style: { ...dangerButtonStyle, padding: "4px 8px", fontSize: "11px" }, onClick: () => remove(i), children: "Remove" })
-      ] }),
-      /* @__PURE__ */ jsxs("div", { style: stepRowStyle, children: [
-        /* @__PURE__ */ jsxs("div", { style: { display: "grid", gap: "4px" }, children: [
-          /* @__PURE__ */ jsx("label", { style: { ...mutedTextStyle, fontSize: "11px" }, children: "ID" }),
-          /* @__PURE__ */ jsx("input", { style: inputStyle, value: step.id, placeholder: "gather", onChange: (e) => update(i, { id: e.target.value }) })
-        ] }),
-        /* @__PURE__ */ jsxs("div", { style: { display: "grid", gap: "4px" }, children: [
-          /* @__PURE__ */ jsx("label", { style: { ...mutedTextStyle, fontSize: "11px" }, children: "Title" }),
-          /* @__PURE__ */ jsx("input", { style: inputStyle, value: step.title, placeholder: "\uB370\uC774\uD130 \uC218\uC9D1", onChange: (e) => update(i, { title: e.target.value }) })
-        ] })
-      ] }),
-      /* @__PURE__ */ jsxs("div", { style: { display: "grid", gap: "4px" }, children: [
-        /* @__PURE__ */ jsx("label", { style: { ...mutedTextStyle, fontSize: "11px" }, children: "Description (\uC5D0\uC774\uC804\uD2B8\uC5D0\uAC8C \uC804\uB2EC\uD560 \uC791\uC5C5 \uC9C0\uC2DC)" }),
-        /* @__PURE__ */ jsx("textarea", { style: { ...textareaStyle, minHeight: "120px" }, value: step.description, placeholder: "\uC218\uC9D1\uB41C \uB370\uC774\uD130\uB97C \uBD84\uC11D\uD558\uC5EC \uBCF4\uACE0\uC11C\uB97C \uC791\uC131\uD558\uC138\uC694.", onChange: (e) => update(i, { description: e.target.value }), rows: 2 })
-      ] }),
-      /* @__PURE__ */ jsxs("div", { style: stepRowStyle, children: [
-        /* @__PURE__ */ jsxs("div", { style: { display: "grid", gap: "4px" }, children: [
-          /* @__PURE__ */ jsx("label", { style: { ...mutedTextStyle, fontSize: "11px" }, children: "Type" }),
-          /* @__PURE__ */ jsxs("select", { style: selectStyle, value: step.type, onChange: (e) => update(i, { type: e.target.value }), children: [
-            /* @__PURE__ */ jsx("option", { value: "tool", children: "\u{1F527} Tool (\uC2DC\uC2A4\uD15C \uC2E4\uD589)" }),
-            /* @__PURE__ */ jsx("option", { value: "agent", children: "\u{1F916} Agent (\uC5D0\uC774\uC804\uD2B8 \uC791\uC5C5)" })
-          ] })
-        ] }),
-        /* @__PURE__ */ jsx("div", { style: { display: "grid", gap: "4px" }, children: step.type === "tool" ? /* @__PURE__ */ jsxs(Fragment, { children: [
-          /* @__PURE__ */ jsx("label", { style: { ...mutedTextStyle, fontSize: "11px" }, children: "Tool Name" }),
-          /* @__PURE__ */ jsx("input", { style: inputStyle, value: step.toolName, placeholder: "daily-tech-scout", onChange: (e) => update(i, { toolName: e.target.value }) })
-        ] }) : /* @__PURE__ */ jsxs(Fragment, { children: [
-          /* @__PURE__ */ jsx("label", { style: { ...mutedTextStyle, fontSize: "11px" }, children: "Agent Name" }),
-          /* @__PURE__ */ jsx("input", { style: inputStyle, value: step.agentName, placeholder: "\uD5D0\uD06C", onChange: (e) => update(i, { agentName: e.target.value }) })
-        ] }) })
-      ] }),
-      step.type === "agent" && /* @__PURE__ */ jsxs("div", { style: { display: "grid", gap: "4px" }, children: [
-        /* @__PURE__ */ jsx("label", { style: { ...mutedTextStyle, fontSize: "11px" }, children: "Tools (\uC5D0\uC774\uC804\uD2B8\uAC00 \uC0AC\uC6A9\uD560 \uB3C4\uAD6C, comma-separated)" }),
-        /* @__PURE__ */ jsx("input", { style: inputStyle, value: step.tools, placeholder: "write-obsidian-report", onChange: (e) => update(i, { tools: e.target.value }) })
-      ] }),
-      /* @__PURE__ */ jsxs("div", { style: stepRowStyle, children: [
-        /* @__PURE__ */ jsxs("div", { style: { display: "grid", gap: "4px" }, children: [
-          /* @__PURE__ */ jsx("label", { style: { ...mutedTextStyle, fontSize: "11px" }, children: "Depends On (comma-separated IDs)" }),
-          /* @__PURE__ */ jsx("input", { style: inputStyle, value: step.dependsOn, placeholder: allIds.filter((id) => id !== step.id).join(", ") || "none", onChange: (e) => update(i, { dependsOn: e.target.value }) })
-        ] }),
-        /* @__PURE__ */ jsxs("div", { style: { display: "grid", gap: "4px" }, children: [
-          /* @__PURE__ */ jsx("label", { style: { ...mutedTextStyle, fontSize: "11px" }, children: "On Failure" }),
-          /* @__PURE__ */ jsxs("select", { style: selectStyle, value: step.onFailure, onChange: (e) => update(i, { onFailure: e.target.value }), children: [
-            /* @__PURE__ */ jsx("option", { value: "", children: "default" }),
-            /* @__PURE__ */ jsx("option", { value: "retry", children: "retry" }),
-            /* @__PURE__ */ jsx("option", { value: "skip", children: "skip" }),
-            /* @__PURE__ */ jsx("option", { value: "abort_workflow", children: "abort workflow" })
-          ] })
-        ] })
+        /* @__PURE__ */ jsx("button", { type: "button", style: buttonStyle, onClick: add, children: "+ Add Step" })
       ] })
-    ] }, i)),
+    ] }),
+    steps.map((step, i) => {
+      const isCollapsed = collapsedSet.has(i);
+      const isSelected = selectedIndex === i;
+      if (isCollapsed) {
+        return /* @__PURE__ */ jsxs(
+          "div",
+          {
+            style: {
+              ...collapsedStepHeaderStyle,
+              ...isSelected ? selectedStepOutlineStyle : {}
+            },
+            onClick: () => {
+              setSelectedIndex(isSelected ? null : i);
+            },
+            onDoubleClick: () => toggleCollapse(i),
+            children: [
+              /* @__PURE__ */ jsx("span", { style: { fontSize: "11px", color: "var(--muted-foreground, #94a3b8)", minWidth: "18px" }, children: i + 1 }),
+              /* @__PURE__ */ jsx("span", { style: { fontSize: "13px" }, children: step.type === "tool" ? "\u{1F527}" : "\u{1F916}" }),
+              /* @__PURE__ */ jsx("span", { style: { fontWeight: 600, fontSize: "13px", color: "var(--foreground, #f8fafc)" }, children: step.id || "(no id)" }),
+              step.title && /* @__PURE__ */ jsxs("span", { style: { color: "var(--muted-foreground, #94a3b8)", fontSize: "12px" }, children: [
+                "\u2014 ",
+                step.title
+              ] }),
+              /* @__PURE__ */ jsxs("span", { style: { marginLeft: "auto", display: "flex", gap: "4px", alignItems: "center" }, children: [
+                /* @__PURE__ */ jsx(
+                  "button",
+                  {
+                    type: "button",
+                    style: { ...buttonStyle, padding: "2px 8px", fontSize: "11px" },
+                    onClick: (e) => {
+                      e.stopPropagation();
+                      toggleCollapse(i);
+                    },
+                    children: "Expand"
+                  }
+                ),
+                /* @__PURE__ */ jsx(
+                  "button",
+                  {
+                    type: "button",
+                    style: { ...dangerButtonStyle, padding: "2px 8px", fontSize: "11px" },
+                    onClick: (e) => {
+                      e.stopPropagation();
+                      remove(i);
+                    },
+                    children: "Remove"
+                  }
+                )
+              ] })
+            ]
+          },
+          i
+        );
+      }
+      return /* @__PURE__ */ jsxs(
+        "div",
+        {
+          style: {
+            ...stepCardStyle,
+            ...isSelected ? selectedStepOutlineStyle : {}
+          },
+          onClick: () => setSelectedIndex(isSelected ? null : i),
+          children: [
+            /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" }, children: [
+              /* @__PURE__ */ jsxs("span", { style: { fontSize: "12px", fontWeight: 600, color: "var(--muted-foreground, #94a3b8)" }, children: [
+                "Step ",
+                i + 1,
+                " \u2014 ",
+                step.type === "tool" ? "\u{1F527} Tool" : "\u{1F916} Agent"
+              ] }),
+              /* @__PURE__ */ jsxs("div", { style: { display: "flex", gap: "4px" }, children: [
+                /* @__PURE__ */ jsx("button", { type: "button", style: { ...buttonStyle, padding: "4px 8px", fontSize: "11px" }, onClick: (e) => {
+                  e.stopPropagation();
+                  toggleCollapse(i);
+                }, children: "Collapse" }),
+                /* @__PURE__ */ jsx("button", { type: "button", style: { ...dangerButtonStyle, padding: "4px 8px", fontSize: "11px" }, onClick: (e) => {
+                  e.stopPropagation();
+                  remove(i);
+                }, children: "Remove" })
+              ] })
+            ] }),
+            /* @__PURE__ */ jsxs("div", { style: stepRowStyle, onClick: (e) => e.stopPropagation(), children: [
+              /* @__PURE__ */ jsxs("div", { style: { display: "grid", gap: "4px" }, children: [
+                /* @__PURE__ */ jsx("label", { style: { ...mutedTextStyle, fontSize: "11px" }, children: "ID" }),
+                /* @__PURE__ */ jsx("input", { style: inputStyle, value: step.id, placeholder: "gather", onChange: (e) => update(i, { id: e.target.value }) })
+              ] }),
+              /* @__PURE__ */ jsxs("div", { style: { display: "grid", gap: "4px" }, children: [
+                /* @__PURE__ */ jsx("label", { style: { ...mutedTextStyle, fontSize: "11px" }, children: "Title" }),
+                /* @__PURE__ */ jsx("input", { style: inputStyle, value: step.title, placeholder: "\uB370\uC774\uD130 \uC218\uC9D1", onChange: (e) => update(i, { title: e.target.value }) })
+              ] })
+            ] }),
+            /* @__PURE__ */ jsxs("div", { style: { display: "grid", gap: "4px" }, onClick: (e) => e.stopPropagation(), children: [
+              /* @__PURE__ */ jsx("label", { style: { ...mutedTextStyle, fontSize: "11px" }, children: "Description (\uC5D0\uC774\uC804\uD2B8\uC5D0\uAC8C \uC804\uB2EC\uD560 \uC791\uC5C5 \uC9C0\uC2DC)" }),
+              /* @__PURE__ */ jsx("textarea", { style: { ...textareaStyle, minHeight: "120px" }, value: step.description, placeholder: "\uC218\uC9D1\uB41C \uB370\uC774\uD130\uB97C \uBD84\uC11D\uD558\uC5EC \uBCF4\uACE0\uC11C\uB97C \uC791\uC131\uD558\uC138\uC694.", onChange: (e) => update(i, { description: e.target.value }), rows: 2 })
+            ] }),
+            /* @__PURE__ */ jsxs("div", { style: stepRowStyle, onClick: (e) => e.stopPropagation(), children: [
+              /* @__PURE__ */ jsxs("div", { style: { display: "grid", gap: "4px" }, children: [
+                /* @__PURE__ */ jsx("label", { style: { ...mutedTextStyle, fontSize: "11px" }, children: "Type" }),
+                /* @__PURE__ */ jsxs("select", { style: selectStyle, value: step.type, onChange: (e) => update(i, { type: e.target.value }), children: [
+                  /* @__PURE__ */ jsxs("option", { value: "tool", children: [
+                    "\u{1F527}",
+                    " Tool (\uC2DC\uC2A4\uD15C \uC2E4\uD589)"
+                  ] }),
+                  /* @__PURE__ */ jsxs("option", { value: "agent", children: [
+                    "\u{1F916}",
+                    " Agent (\uC5D0\uC774\uC804\uD2B8 \uC791\uC5C5)"
+                  ] })
+                ] })
+              ] }),
+              /* @__PURE__ */ jsx("div", { style: { display: "grid", gap: "4px" }, children: step.type === "tool" ? /* @__PURE__ */ jsxs(Fragment, { children: [
+                /* @__PURE__ */ jsx("label", { style: { ...mutedTextStyle, fontSize: "11px" }, children: "Tool Name" }),
+                /* @__PURE__ */ jsx("input", { style: inputStyle, value: step.toolName, placeholder: "daily-tech-scout", onChange: (e) => update(i, { toolName: e.target.value }) })
+              ] }) : /* @__PURE__ */ jsxs(Fragment, { children: [
+                /* @__PURE__ */ jsx("label", { style: { ...mutedTextStyle, fontSize: "11px" }, children: "Agent Name" }),
+                /* @__PURE__ */ jsx("input", { style: inputStyle, value: step.agentName, placeholder: "\uD5D0\uD06C", onChange: (e) => update(i, { agentName: e.target.value }) })
+              ] }) })
+            ] }),
+            step.type === "agent" && /* @__PURE__ */ jsxs("div", { style: { display: "grid", gap: "4px" }, onClick: (e) => e.stopPropagation(), children: [
+              /* @__PURE__ */ jsx("label", { style: { ...mutedTextStyle, fontSize: "11px" }, children: "Tools (\uC5D0\uC774\uC804\uD2B8\uAC00 \uC0AC\uC6A9\uD560 \uB3C4\uAD6C, comma-separated)" }),
+              /* @__PURE__ */ jsx("input", { style: inputStyle, value: step.tools, placeholder: "write-obsidian-report", onChange: (e) => update(i, { tools: e.target.value }) })
+            ] }),
+            /* @__PURE__ */ jsxs("div", { style: stepRowStyle, onClick: (e) => e.stopPropagation(), children: [
+              /* @__PURE__ */ jsxs("div", { style: { display: "grid", gap: "4px" }, children: [
+                /* @__PURE__ */ jsx("label", { style: { ...mutedTextStyle, fontSize: "11px" }, children: "Depends On (comma-separated IDs)" }),
+                /* @__PURE__ */ jsx("input", { style: inputStyle, value: step.dependsOn, placeholder: allIds.filter((id) => id !== step.id).join(", ") || "none", onChange: (e) => update(i, { dependsOn: e.target.value }) })
+              ] }),
+              /* @__PURE__ */ jsxs("div", { style: { display: "grid", gap: "4px" }, children: [
+                /* @__PURE__ */ jsx("label", { style: { ...mutedTextStyle, fontSize: "11px" }, children: "On Failure" }),
+                /* @__PURE__ */ jsxs("select", { style: selectStyle, value: step.onFailure, onChange: (e) => update(i, { onFailure: e.target.value }), children: [
+                  /* @__PURE__ */ jsx("option", { value: "", children: "default" }),
+                  /* @__PURE__ */ jsx("option", { value: "retry", children: "retry" }),
+                  /* @__PURE__ */ jsx("option", { value: "skip", children: "skip" }),
+                  /* @__PURE__ */ jsx("option", { value: "abort_workflow", children: "abort workflow" })
+                ] })
+              ] })
+            ] })
+          ]
+        },
+        i
+      );
+    }),
     steps.length === 0 && /* @__PURE__ */ jsx("p", { style: mutedTextStyle, children: 'No steps yet. Click "+ Add Step" to begin.' })
   ] });
 }

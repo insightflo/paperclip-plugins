@@ -4,6 +4,13 @@ export const PLUGIN_DISPLAY_NAME = "Mission Board";
 export const PAGE_ROUTE = "work-board";
 export const COLUMN_UNASSIGNED = "미분류";
 export const UNIQUE_WORK_LABELS = ["[고유업무]", "고유업무"];
+export const NODE_COLORS = {
+    agent: "#22c55e",
+    issueParent: "#38bdf8",
+    issueChild: "#fb923c",
+    issueStandalone: "#94a3b8",
+    default: "#64748b",
+};
 export const SLOT_IDS = {
     page: "work-board-page",
     sidebar: "work-board-sidebar-link",

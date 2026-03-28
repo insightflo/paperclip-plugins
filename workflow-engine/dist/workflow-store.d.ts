@@ -25,6 +25,7 @@ export interface WorkflowRun extends Record<string, unknown> {
     status: "running" | "completed" | "failed" | "aborted" | "timed-out";
     parentIssueId?: string;
     runLabel?: string;
+    triggerSource?: "schedule" | "manual" | "label" | "api";
     startedAt: string;
     completedAt?: string;
 }

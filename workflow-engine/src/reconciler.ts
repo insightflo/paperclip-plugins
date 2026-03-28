@@ -12,6 +12,7 @@ import {
   updateWorkflowDefinition,
   updateWorkflowRun,
   type WorkflowDefinition,
+  type WorkflowRun,
 } from "./workflow-store.js";
 import { checkDailyRunGuard } from "./run-guards.js";
 import {
@@ -74,12 +75,33 @@ function matchesCronField(field: string, value: number): boolean {
   return false;
 }
 
-function cronMatchesNow(cron: string, now: Date): boolean {
+/**
+ * Check if a cron expression matches `now`, with a tolerance window for the
+ * minute field so that a reconciler running every N minutes doesn't miss a
+ * cron that specifies an exact minute (e.g. `0 7 * * *`).
+ *
+ * `toleranceMinutes` defaults to 4 (just under the 5-min reconciler interval).
+ */
+function cronMatchesNow(cron: string, now: Date, toleranceMinutes = 4): boolean {
   const parts = cron.trim().split(/\s+/);
   if (parts.length < 5) return false;
   const [minute, hour, dayOfMonth, month, dayOfWeek] = parts;
+
+  // For the minute field, check if `now` is within [cronMinute, cronMinute + tolerance]
+  let minuteMatch = false;
+  if (minute === "*" || minute.includes("/") || minute.includes("-") || minute.includes(",")) {
+    minuteMatch = matchesCronField(minute, now.getMinutes());
+  } else {
+    const cronMinute = Number(minute);
+    if (Number.isFinite(cronMinute)) {
+      const nowMinute = now.getMinutes();
+      const diff = (nowMinute - cronMinute + 60) % 60;
+      minuteMatch = diff >= 0 && diff <= toleranceMinutes;
+    }
+  }
+
   return (
-    matchesCronField(minute, now.getMinutes()) &&
+    minuteMatch &&
     matchesCronField(hour, now.getHours()) &&
     matchesCronField(dayOfMonth, now.getDate()) &&
     matchesCronField(month, now.getMonth() + 1) &&
@@ -219,15 +241,16 @@ async function countWorkflowRunsForDay(
   companyId: string,
   workflowId: string,
   dayKey: string,
+  onlyScheduled = true,
 ): Promise<number> {
   const runs = await listWorkflowRunsByWorkflowId(ctx, companyId, workflowId);
   let count = 0;
 
   for (const runRecord of runs) {
     const run = toWorkflowRunRecord(runRecord);
-    if (toIsoDay(run.data.startedAt) === dayKey) {
-      count += 1;
-    }
+    if (toIsoDay(run.data.startedAt) !== dayKey) continue;
+    if (onlyScheduled && run.data.triggerSource && run.data.triggerSource !== "schedule") continue;
+    count += 1;
   }
 
   return count;
@@ -332,7 +355,10 @@ export async function runScheduledWorkflows(ctx: PluginContext): Promise<void> {
       }
 
       try {
-        await _startWorkflowFn(ctx, def.id, companyId, { createParentIssue: true });
+        const runResult = await _startWorkflowFn(ctx, def.id, companyId, { createParentIssue: true }) as { runId?: string } | undefined;
+        if (runResult?.runId) {
+          await updateWorkflowRun(ctx, runResult.runId, { triggerSource: "schedule" } as Partial<WorkflowRun>);
+        }
         await updateWorkflowDefinition(ctx, def.id, {
           lastScheduledRunAt: now.toISOString(),
         });

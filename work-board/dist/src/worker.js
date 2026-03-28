@@ -1,5 +1,6 @@
 import { definePlugin, runWorker } from "@paperclipai/plugin-sdk";
 import { COLUMN_UNASSIGNED, ISSUE_STATUS_LABELS, PLUGIN_DISPLAY_NAME, PRIORITY_WEIGHTS, UNIQUE_WORK_LABELS, } from "./constants.js";
+import { buildMissionIssueGraph } from "./issue-graph.js";
 const OPEN_STATUSES = new Set(["backlog", "todo", "in_progress", "in_review", "blocked"]);
 const IN_PROGRESS_STATUSES = new Set(["in_progress", "in_review"]);
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -215,6 +216,117 @@ function missionTitle(rootIssue, missionId, taskCards) {
     }
     return `Mission ${missionId.slice(0, 8)}`;
 }
+function buildColumnsFromMissions(missions) {
+    const columnsByName = new Map();
+    for (const mission of missions) {
+        const key = mission.columnName || COLUMN_UNASSIGNED;
+        const bucket = columnsByName.get(key);
+        if (bucket) {
+            bucket.push(mission);
+        }
+        else {
+            columnsByName.set(key, [mission]);
+        }
+    }
+    return Array.from(columnsByName.entries())
+        .map(([name, missionCards]) => ({
+        key: name,
+        name,
+        missionCount: missionCards.length,
+        missions: [...missionCards].sort((left, right) => {
+            const overdueDiff = (right.buckets.find((bucket) => bucket.key === "delayed")?.count ?? 0)
+                - (left.buckets.find((bucket) => bucket.key === "delayed")?.count ?? 0);
+            if (overdueDiff !== 0)
+                return overdueDiff;
+            const inProgressDiff = (right.buckets.find((bucket) => bucket.key === "inProgress")?.count ?? 0)
+                - (left.buckets.find((bucket) => bucket.key === "inProgress")?.count ?? 0);
+            if (inProgressDiff !== 0)
+                return inProgressDiff;
+            return left.title.localeCompare(right.title);
+        }),
+    }))
+        .sort((left, right) => {
+        if (left.name === COLUMN_UNASSIGNED)
+            return 1;
+        if (right.name === COLUMN_UNASSIGNED)
+            return -1;
+        return left.name.localeCompare(right.name);
+    });
+}
+function deriveSpawnGraph(graph) {
+    const nodeById = new Map(graph.graph.nodes.map((node) => [node.id, node]));
+    const seedIssueIds = graph.seedIssueIds.filter((issueId) => nodeById.has(issueId));
+    const issueReachable = new Set(seedIssueIds);
+    const queue = [...seedIssueIds];
+    const issueIds = new Set(graph.graph.nodes.filter((node) => node.kind === "issue").map((node) => node.id));
+    const normalizedEdges = [];
+    const adjacency = new Map();
+    const seenEdges = new Set();
+    for (const edge of graph.graph.edges) {
+        if (edge.label !== "parent" && edge.label !== "reissue" && edge.label !== "spawned_followup")
+            continue;
+        const source = edge.label === "parent" ? edge.target : edge.source;
+        const target = edge.label === "parent" ? edge.source : edge.target;
+        const label = edge.label === "parent" ? "child" : edge.label;
+        if (!issueIds.has(source) || !issueIds.has(target))
+            continue;
+        const key = `${source}->${target}:${label}`;
+        if (seenEdges.has(key))
+            continue;
+        seenEdges.add(key);
+        normalizedEdges.push({ source, target, label });
+        const bucket = adjacency.get(source);
+        if (bucket)
+            bucket.push(target);
+        else
+            adjacency.set(source, [target]);
+    }
+    while (queue.length > 0) {
+        const current = queue.shift();
+        if (!current)
+            continue;
+        const nextIds = adjacency.get(current) ?? [];
+        for (const nextId of nextIds) {
+            if (issueReachable.has(nextId))
+                continue;
+            issueReachable.add(nextId);
+            queue.push(nextId);
+        }
+    }
+    const reachableNodes = new Map();
+    const reachableIssueIds = new Set([...issueReachable].filter((issueId) => issueIds.has(issueId)));
+    for (const node of graph.graph.nodes) {
+        if (node.kind === "issue" && reachableIssueIds.has(node.id)) {
+            reachableNodes.set(node.id, node);
+        }
+    }
+    for (const edge of graph.graph.edges) {
+        if (edge.label !== "assignee")
+            continue;
+        if (!reachableIssueIds.has(edge.source))
+            continue;
+        const agent = nodeById.get(edge.target);
+        if (!agent || agent.kind !== "agent")
+            continue;
+        reachableNodes.set(agent.id, agent);
+    }
+    const assigneeEdges = graph.graph.edges.filter((edge) => edge.label === "assignee" && reachableNodes.has(edge.source) && reachableNodes.has(edge.target));
+    const reachableEdges = [...normalizedEdges, ...assigneeEdges].filter((edge) => {
+        return reachableNodes.has(edge.source) && reachableNodes.has(edge.target);
+    });
+    const orderedNodes = [...reachableNodes.values()].sort((left, right) => {
+        if (left.kind !== right.kind)
+            return left.kind === "issue" ? -1 : 1;
+        return left.label.localeCompare(right.label);
+    });
+    return {
+        seedIssueIds,
+        graph: {
+            nodes: orderedNodes,
+            edges: reachableEdges,
+        },
+    };
+}
 export function buildWorkBoardSnapshot(issues, options) {
     const now = options.now ?? new Date();
     const weekStart = startOfWeekKst(now);
@@ -282,41 +394,7 @@ export function buildWorkBoardSnapshot(issues, options) {
             updatedAt: toIsoString(rootIssue?.updatedAt ?? taskCards[0]?.updatedAt ?? null),
         });
     }
-    const columnsByName = new Map();
-    for (const mission of missions) {
-        const key = mission.columnName || COLUMN_UNASSIGNED;
-        const bucket = columnsByName.get(key);
-        if (bucket) {
-            bucket.push(mission);
-        }
-        else {
-            columnsByName.set(key, [mission]);
-        }
-    }
-    const columns = Array.from(columnsByName.entries())
-        .map(([name, missionCards]) => ({
-        key: name,
-        name,
-        missionCount: missionCards.length,
-        missions: [...missionCards].sort((left, right) => {
-            const overdueDiff = (right.buckets.find((bucket) => bucket.key === "delayed")?.count ?? 0)
-                - (left.buckets.find((bucket) => bucket.key === "delayed")?.count ?? 0);
-            if (overdueDiff !== 0)
-                return overdueDiff;
-            const inProgressDiff = (right.buckets.find((bucket) => bucket.key === "inProgress")?.count ?? 0)
-                - (left.buckets.find((bucket) => bucket.key === "inProgress")?.count ?? 0);
-            if (inProgressDiff !== 0)
-                return inProgressDiff;
-            return left.title.localeCompare(right.title);
-        }),
-    }))
-        .sort((left, right) => {
-        if (left.name === COLUMN_UNASSIGNED)
-            return 1;
-        if (right.name === COLUMN_UNASSIGNED)
-            return -1;
-        return left.name.localeCompare(right.name);
-    });
+    const columns = buildColumnsFromMissions(missions);
     const totals = {
         missions: missions.length,
         tasks: 0,
@@ -338,6 +416,39 @@ export function buildWorkBoardSnapshot(issues, options) {
                 totals.overdue += bucket.count;
         }
     }
+    // --- Project grouping ---
+    const projects = options.projects ?? [];
+    const projectNameById = new Map(projects.map((project) => [project.id, project.name]));
+    const DEFAULT_PROJECT_NAME = "기본";
+    // Group missions by the projectId of their root issue (or first task)
+    const missionsByProjectId = new Map();
+    for (const mission of missions) {
+        const rootIssue = issueById.get(mission.missionId) ?? null;
+        const projectId = asString(rootIssue?.projectId) || null;
+        const bucket = missionsByProjectId.get(projectId);
+        if (bucket) {
+            bucket.push(mission);
+        }
+        else {
+            missionsByProjectId.set(projectId, [mission]);
+        }
+    }
+    // Build project groups: named projects first (sorted), then "기본" last
+    const projectGroups = [];
+    for (const [projectId, projectMissions] of missionsByProjectId.entries()) {
+        projectGroups.push({
+            projectId,
+            projectName: projectId ? (projectNameById.get(projectId) ?? projectId.slice(0, 8)) : DEFAULT_PROJECT_NAME,
+            columns: buildColumnsFromMissions(projectMissions),
+        });
+    }
+    projectGroups.sort((left, right) => {
+        if (left.projectId === null)
+            return 1;
+        if (right.projectId === null)
+            return -1;
+        return left.projectName.localeCompare(right.projectName);
+    });
     return {
         companyId: options.companyId,
         generatedAt: now.toISOString(),
@@ -348,11 +459,120 @@ export function buildWorkBoardSnapshot(issues, options) {
         },
         totals,
         columns,
+        missionGraph: options.missionGraph ?? { graph: { nodes: [], edges: [] }, seedIssueIds: [] },
+        spawnGraph: options.spawnGraph,
+        projectGroups,
     };
 }
+async function listAllAgents(ctx, companyId) {
+    const apiUrl = process.env.PAPERCLIP_API_URL || "http://localhost:3100";
+    const limit = 250;
+    const items = [];
+    try {
+        for (let offset = 0;; offset += limit) {
+            const res = await fetch(`${apiUrl}/api/companies/${companyId}/agents?limit=${limit}&offset=${offset}`);
+            if (!res.ok)
+                break;
+            const batch = (await res.json());
+            const mapped = batch
+                .map((agent) => ({
+                id: asString(agent.id),
+                name: asString(agent.name),
+                status: asString(agent.status),
+                role: asString(agent.role),
+            }))
+                .filter((agent) => Boolean(agent.id));
+            items.push(...mapped);
+            if (batch.length < limit)
+                break;
+        }
+    }
+    catch {
+        const limit = 250;
+        const items = [];
+        for (let offset = 0;; offset += limit) {
+            const batch = await ctx.agents.list({ companyId, limit, offset });
+            items.push(...batch.map((agent) => ({
+                id: agent.id,
+                name: agent.name,
+                status: agent.status,
+                role: agent.role,
+            })));
+            if (batch.length < limit)
+                break;
+        }
+        return items;
+    }
+    return items;
+}
+async function listAllIssues(ctx, companyId) {
+    const limit = 250;
+    const items = [];
+    for (let offset = 0;; offset += limit) {
+        const batch = await ctx.issues.list({ companyId, limit, offset });
+        items.push(...batch);
+        if (batch.length < limit)
+            break;
+    }
+    return items;
+}
+async function listIssueComments(ctx, companyId, issueId) {
+    const apiUrl = process.env.PAPERCLIP_API_URL || "http://localhost:3100";
+    try {
+        const res = await fetch(`${apiUrl}/api/issues/${issueId}/comments?limit=200`);
+        if (!res.ok)
+            return [];
+        const comments = (await res.json());
+        return comments.filter((comment) => asString(comment.companyId) === companyId).map((comment) => ({
+            body: asString(comment.body),
+        }));
+    }
+    catch {
+        try {
+            const comments = await ctx.issues.listComments(issueId, companyId);
+            return comments.map((comment) => ({ body: asString(comment.body) }));
+        }
+        catch {
+            return [];
+        }
+    }
+}
 async function loadBoardSnapshot(ctx, companyId) {
-    const issues = await ctx.issues.list({ companyId, limit: 500, offset: 0 });
-    return buildWorkBoardSnapshot(issues, { companyId });
+    let projects = [];
+    try {
+        const apiUrl = process.env.PAPERCLIP_API_URL || "http://localhost:3100";
+        const res = await fetch(`${apiUrl}/api/companies/${companyId}/projects?limit=200`);
+        if (res.ok) {
+            const raw = (await res.json());
+            projects = raw
+                .map((project) => ({
+                id: asString(project.id),
+                name: asString(project.name),
+            }))
+                .filter((project) => Boolean(project.id));
+        }
+    }
+    catch {
+        // ignore and continue without project grouping
+    }
+    const [agents, issues] = await Promise.all([
+        listAllAgents(ctx, companyId),
+        listAllIssues(ctx, companyId),
+    ]);
+    const baseSnapshot = buildWorkBoardSnapshot(issues, { companyId, projects });
+    const currentMissionSeedIds = Array.from(new Set(baseSnapshot.columns.flatMap((column) => column.missions.map((mission) => mission.missionId))));
+    const missionGraph = await buildMissionIssueGraph({
+        issues,
+        agents,
+        loadComments: async (issueId) => await listIssueComments(ctx, companyId, issueId),
+        seedIssueIds: currentMissionSeedIds,
+    });
+    return buildWorkBoardSnapshot(issues, {
+        companyId,
+        projects,
+        missionGraph,
+        spawnGraph: deriveSpawnGraph(missionGraph),
+    });
 }
 const plugin = definePlugin({
     async setup(ctx) {
@@ -376,6 +596,9 @@ const plugin = definePlugin({
                         overdue: 0,
                     },
                     columns: [],
+                    missionGraph: { graph: { nodes: [], edges: [] }, seedIssueIds: [] },
+                    spawnGraph: { graph: { nodes: [], edges: [] }, seedIssueIds: [] },
+                    projectGroups: [],
                 };
             }
             return await loadBoardSnapshot(ctx, companyId);

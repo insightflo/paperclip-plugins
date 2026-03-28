@@ -8,7 +8,7 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// node_modules/cytoscape/dist/cytoscape.esm.mjs
+// node_modules/.pnpm/cytoscape@3.33.1/node_modules/cytoscape/dist/cytoscape.esm.mjs
 var cytoscape_esm_exports = {};
 __export(cytoscape_esm_exports, {
   default: () => cytoscape
@@ -3654,7 +3654,7 @@ function getModule(type, name, moduleType, moduleName) {
 }
 var _window, navigator, typeofstr, typeofobj, typeoffn, typeofhtmlele, instanceStr, string, fn$6, array, plainObject, object, number$1, integer, htmlElement, elementOrCollection, element, collection, core, stylesheet, event, emptyString, domElement, boundingBox, promise, ms, memoize, camel2dash, dash2camel, prependCamel, capitalize, endsWith, number2, rgba, rgbaNoBackRefs, hsla, hslaNoBackRefs, hex3, hex6, ascending, descending, extend, hex2tuple, hsl2tuple, rgb2tuple, colorname2tuple, color2tuple, colors, setMap, getMap, commonjsGlobal, isObject_1, hasRequiredIsObject, _freeGlobal, hasRequired_freeGlobal, _root, hasRequired_root, now_1, hasRequiredNow, _trimmedEndIndex, hasRequired_trimmedEndIndex, _baseTrim, hasRequired_baseTrim, _Symbol, hasRequired_Symbol, _getRawTag, hasRequired_getRawTag, _objectToString, hasRequired_objectToString, _baseGetTag, hasRequired_baseGetTag, isObjectLike_1, hasRequiredIsObjectLike, isSymbol_1, hasRequiredIsSymbol, toNumber_1, hasRequiredToNumber, debounce_1, hasRequiredDebounce, debounceExports, debounce, performance$1, pnow, raf, requestAnimationFrame, performanceNow, DEFAULT_HASH_SEED, K, DEFAULT_HASH_SEED_ALT, hashIterableInts, hashInt, hashIntAlt, combineHashes, combineHashesArray, hashArrays, hashIntsArray, hashString, hashStrings, hashStringsArray, movePointByBoxAspect, warningsEnabled, warnSupported, traceSupported, MAX_INT$1, trueify, falsify, zeroify, noop$1, error, warnings, warn, clone, copy, copyArray, uuid, _staticEmptyObject, staticEmptyObject, defaults$g, removeFromArray, clearArray, push, getPrefixedProperty, setPrefixedProperty, ObjectMap, Map$1, undef, ObjectSet, Set$1, Element, defineSearch, elesfn$v, heap$2, heap$1, hasRequiredHeap$1, heap, hasRequiredHeap, heapExports, Heap, dijkstraDefaults, elesfn$u, elesfn$t, aStarDefaults, elesfn$s, floydWarshallDefaults, elesfn$r, bellmanFordDefaults, elesfn$q, sqrt2, collapse, contractUntil, elesfn$p, _Math$hypot, copyPosition, modelToRenderedPosition$1, renderedToModelPosition, array2point, min, max, mean, median, deg2rad, getAngleFromDisp, log2, signum, dist, sqdist, inPlaceSumNormalize, qbezierAt, qbezierPtAt, lineAt, bound, makeBoundingBox, copyBoundingBox, clearBoundingBox, updateBoundingBox, expandBoundingBoxByPoint, expandBoundingBox, expandBoundingBoxSides, assignBoundingBox, boundingBoxesIntersect, inBoundingBox, pointInBoundingBox, boundingBoxInBoundingBox, hypot, roundRectangleIntersectLine, inLineVicinity, inBezierVicinity, solveQuadratic, solveCubic, sqdistToQuadraticBezier, sqdistToFiniteLine, pointInsidePolygonPoints, pointInsidePolygon, pointInsideRoundPolygon, joinLines, expandPolygon, intersectLineEllipse, checkInEllipse, intersectLineCircle, midOfThree, finiteLinesIntersect, transformPoints, polygonIntersectLine, roundPolygonIntersectLine, shortenIntersection, generateUnitNgonPointsFitToSquare, fitPolygonToSquare, generateUnitNgonPoints, getRoundRectangleRadius, getRoundPolygonRadius, getCutRectangleCornerLength, bezierPtsToQuadCoeff, getBarrelCurveConstants, pageRankDefaults, elesfn$o, defaults$f, elesfn$n, defaults$e, elesfn$m, defaults$d, elesfn$l, defaults$c, setOptions$3, getSimilarity$1, addLoops, normalize, mmult, expand, inflate, hasConverged, assign$2, isDuplicate, removeDuplicates, markovClustering, markovClustering$1, identity$1, absDiff, addAbsDiff, addSquaredDiff, sqrt, maxAbsDiff, getDistance, distances, defaults$b, setOptions$2, getDist, randomCentroids, classify, buildCluster, haveValuesConverged, haveMatricesConverged, seenBefore, randomMedoids, findCost, kMeans, kMedoids, updateCentroids, updateMembership, assign$1, fuzzyCMeans, kClustering, defaults$a, linkageAliases, setOptions$1, mergeClosest, _getAllChildren, _buildDendrogram, _buildClustersFromTree, hierarchicalClustering, hierarchicalClustering$1, defaults$9, setOptions4, getSimilarity2, getPreference, findExemplars, assignClusters, assign3, affinityPropagation, affinityPropagation$1, hierholzerDefaults, elesfn$k, hopcroftTarjanBiconnected, hopcroftTarjanBiconnected$1, tarjanStronglyConnected, tarjanStronglyConnected$1, elesfn$j, STATE_PENDING, STATE_FULFILLED, STATE_REJECTED, _api, deliver, execute, execute_handlers, resolver, _resolve, Promise$1, Animation, anifn, define$3, isArray_1, hasRequiredIsArray, _isKey, hasRequired_isKey, isFunction_1, hasRequiredIsFunction, _coreJsData, hasRequired_coreJsData, _isMasked, hasRequired_isMasked, _toSource, hasRequired_toSource, _baseIsNative, hasRequired_baseIsNative, _getValue, hasRequired_getValue, _getNative, hasRequired_getNative, _nativeCreate, hasRequired_nativeCreate, _hashClear, hasRequired_hashClear, _hashDelete, hasRequired_hashDelete, _hashGet, hasRequired_hashGet, _hashHas, hasRequired_hashHas, _hashSet, hasRequired_hashSet, _Hash, hasRequired_Hash, _listCacheClear, hasRequired_listCacheClear, eq_1, hasRequiredEq, _assocIndexOf, hasRequired_assocIndexOf, _listCacheDelete, hasRequired_listCacheDelete, _listCacheGet, hasRequired_listCacheGet, _listCacheHas, hasRequired_listCacheHas, _listCacheSet, hasRequired_listCacheSet, _ListCache, hasRequired_ListCache, _Map, hasRequired_Map, _mapCacheClear, hasRequired_mapCacheClear, _isKeyable, hasRequired_isKeyable, _getMapData, hasRequired_getMapData, _mapCacheDelete, hasRequired_mapCacheDelete, _mapCacheGet, hasRequired_mapCacheGet, _mapCacheHas, hasRequired_mapCacheHas, _mapCacheSet, hasRequired_mapCacheSet, _MapCache, hasRequired_MapCache, memoize_1, hasRequiredMemoize, _memoizeCapped, hasRequired_memoizeCapped, _stringToPath, hasRequired_stringToPath, _arrayMap, hasRequired_arrayMap, _baseToString, hasRequired_baseToString, toString_1, hasRequiredToString, _castPath, hasRequired_castPath, _toKey, hasRequired_toKey, _baseGet, hasRequired_baseGet, get_1, hasRequiredGet, getExports, get, _defineProperty, hasRequired_defineProperty, _baseAssignValue, hasRequired_baseAssignValue, _assignValue, hasRequired_assignValue, _isIndex, hasRequired_isIndex, _baseSet, hasRequired_baseSet, set_1, hasRequiredSet, setExports, set, _copyArray, hasRequired_copyArray, toPath_1, hasRequiredToPath, toPathExports, toPath, define$2, define$1, define, elesfn$i, elesfn$h, tokens, newQuery, Type, stateSelectors, lookup, stateSelectorMatches, stateSelectorRegex, cleanMetaChars, replaceLastQuery, exprs, consumeExpr, consumeWhitespace, parse, toString, parse$1, valCmp, boolCmp, existCmp, data$1, meta, match, matches$1, filter, matches31, matching, Selector, selfn, elesfn$g, cache, elesfn$f, fn$5, elesfn$e, data3, elesfn$d, fn$4, elesfn$c, beforePositionSet, positionDef, position, fn$3, elesfn$b, noninf, updateBounds, updateBoundsFromBox, prefixedProperty, updateBoundsFromArrow, updateBoundsFromLabel, updateBoundsFromOutline, updateBoundsFromMiter, updateBoundsFromMiterBorder, boundingBoxImpl, getKey, getBoundingBoxPosKey, cachedBoundingBoxImpl, defBbOpts, defBbOptsKey, filledBbOpts, bounds, fn$2, elesfn$a, defineDimFns, widthHeight, ifEdge, ifEdgeRenderedPosition, ifEdgeRenderedPositions, controlPoints, segmentPoints, sourceEndpoint, targetEndpoint, midpoint, pts, renderedName, edgePoints, dimensions, Event, eventRegex, universalNamespace, defaults$8, defaultsKeys, emptyOpts, p, forEachEvent, makeEventObj, forEachEventObj, emitterOptions$1, argSelector$1, elesfn$9, elesfn$8, fn$1, elesfn$7, zIndexSort, elesfn$6, defineSymbolIterator, getLayoutDimensionOptions, elesfn$5, elesfn$4, eleTakesUpSpace, eleInteractive, parentInteractive, eleVisible, edgeVisibleViaNode, elesfn$3, elesfn$2, defineDagExtremity, defineDagOneHop, defineDagAllHops, Collection, elesfn$1, corefn$9, generateSpringRK4, cubicBezier, easings, corefn$8, emitterOptions, argSelector2, elesfn, corefn$7, corefn$6, corefn$5, rendererDefaults, corefn$4, corefn$3, styfn$8, TRUE, FALSE, styfn$7, styfn$6, styfn$5, styfn$4, styfn$3, styfn$2, styfn$1, _Style, styfn, corefn$2, defaultSelectionType, corefn$1, fn2, Core, corefn, defaults$7, deprecatedOptionDefaults, getInfo, setInfo, defaults$6, defaults$5, DEBUG, defaults$4, createLayoutInfo, findLCA, _findLCA_aux, printLayoutInfo, randomizePositions, getScaleInBoundsFn, refreshPositions, step, calculateNodeForces, randomDistance, nodeRepulsion2, nodesOverlap, findClippingPoint, calculateEdgeForces, calculateGravityForces, propagateForces, updatePositions, limitForce, _updateAncestryBoundaries, separateComponents, defaults$3, defaults$2, defaults$1, defaults2, layout3, noop2, throwImgErr, BRp$f, BRp$e, BRp$d, x, y, v1, v2, sinA, sinA90, radDirection, drawDirection, angle, halfAngle, cRadius, lenOut, radius, limit, startX, startY, stopX, stopY, lastPoint, asVec, invertVec, calcCornerArc, AVOID_IMPOSSIBLE_BEZIER_CONSTANT, AVOID_IMPOSSIBLE_BEZIER_CONSTANT_L, BRp$c, BRp$b, BRp$a, BRp$9, lineAngleFromDelta, lineAngle, bezierAngle, BRp$8, TOO_SMALL_CUT_RECT, warnedCutRect, BRp$7, BRp$6, BRp$5, BRp$4, BRp$3, BRp$2, BRp$1, beforeRenderCallbacks, BaseRenderer, BR, BRp, fullFpsTime, defs, ElementTextureCacheLookup, minTxrH, txrStepH, minLvl$1, maxLvl$1, maxZoom$1, eleTxrSpacing, defTxrWidth, maxTxrW, maxTxrH, minUtility, maxFullness, maxFullnessChecks, deqCost$1, deqAvgCost$1, deqNoDrawCost$1, deqFastCost$1, deqRedrawThreshold$1, maxDeqSize$1, getTxrReasons, initDefaults, ElementTextureCache, ETCp, defNumLayers, minLvl, maxLvl, maxZoom2, deqRedrawThreshold, refineEleDebounceTime, deqCost, deqAvgCost, deqNoDrawCost, deqFastCost, maxDeqSize, invalidThreshold, maxLayerArea, maxLayerDim, useHighQualityEleTxrReqs, LayeredTextureCache, LTCp, layerIdPool, MAX_INT, CRp$b, impl, CRp$a, getZeroRotation, getLabelRotation, getSourceLabelRotation, getTargetLabelRotation, getOpacity, getTextOpacity, CRp$9, drawEdgeOverlayUnderlay, CRp$8, CRp$7, CRp$6, drawNodeOverlayUnderlay, CRp$5, motionBlurDelay, fpsHeight, ARRAY_TYPE, Atlas, AtlasCollection, AtlasManager, AtlasBatchManager, circleSD, rectangleSD, roundRectangleSD, ellipseSD, RENDER_TARGET, TEX_PICKING_MODE, TEXTURE, EDGE_STRAIGHT, EDGE_CURVE_SEGMENT, EDGE_ARROW, RECTANGLE, ROUND_RECTANGLE, BOTTOM_ROUND_RECTANGLE, ELLIPSE, ElementDrawingWebGL, CRp$4, getStyleKeysForLabel, getBoundingBoxForLabel, CRp$3, sin0, cos0, sin, cos, ellipseStepSize, i, CRp$2, CRp$1, CR, CRp, pathsImpld, renderer2, incExts, extensions, modules, extension, _Stylesheet, sheetfn, version, cytoscape;
 var init_cytoscape_esm = __esm({
-  "node_modules/cytoscape/dist/cytoscape.esm.mjs"() {
+  "node_modules/.pnpm/cytoscape@3.33.1/node_modules/cytoscape/dist/cytoscape.esm.mjs"() {
     _window = typeof window === "undefined" ? null : window;
     navigator = _window ? _window.navigator : null;
     _window ? _window.document : null;
@@ -30127,6 +30127,7 @@ var NODE_COLORS = {
   file: "#3b82f6",
   function: "#a855f7",
   class: "#f97316",
+  issue: "#f97316",
   tool: "#f59e0b",
   default: "#64748b"
 };
@@ -30209,14 +30210,16 @@ function buildElements(nodes3, edges3) {
   }));
   return [...nodeElements, ...edgeElements];
 }
+var CODE_NODE_KINDS = /* @__PURE__ */ new Set(["module", "file", "function", "class", "tool"]);
 function isCodeNode(node) {
-  return node.kind !== "agent";
+  return CODE_NODE_KINDS.has(node.kind);
 }
 function filterGraphByLayer(nodes3, edges3, layerFilter) {
   const filteredNodes = nodes3.filter((node) => {
     if (layerFilter === "all") return true;
     if (layerFilter === "agent") return node.kind === "agent";
-    return isCodeNode(node);
+    if (layerFilter === "code") return isCodeNode(node);
+    return true;
   });
   const nodeIds = new Set(filteredNodes.map((node) => node.id));
   const filteredEdges = edges3.filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target));
@@ -30293,10 +30296,12 @@ function QuestionList({ questions }) {
     /* @__PURE__ */ jsx("div", { style: mutedStyle, children: question.actionHint })
   ] }, `${question.text}-${index}`)) });
 }
-function AgentDetailPanel({
+function NodeDetailPanel({
   selectedNode,
   detail,
-  loading
+  loading,
+  nodes: nodes3,
+  edges: edges3
 }) {
   if (!selectedNode) {
     return /* @__PURE__ */ jsx("div", { style: mutedStyle, children: "\uB178\uB4DC\uB97C \uD074\uB9AD\uD558\uBA74 \uC0C1\uC138 \uC815\uBCF4\uAC00 \uD45C\uC2DC\uB429\uB2C8\uB2E4." });
@@ -30530,13 +30535,13 @@ function SystemGardenPage({ context }) {
           }
         )
       ] }),
-      /* @__PURE__ */ jsx("div", { style: { ...mutedStyle, fontSize: "13px" }, children: "\uC5D0\uC774\uC804\uD2B8 \uADF8\uB798\uD504\uC640 \uCF54\uB4DC KG\uB97C \uB808\uC774\uC5B4\uBCC4\uB85C \uACB9\uCCD0 \uBCF4\uBA70 \uC6B4\uC601 \uAC74\uAC15\uB3C4\uC640 \uBA54\uD0C0\uC778\uC9C0 \uC9C8\uBB38\uC744 \uC810\uAC80\uD569\uB2C8\uB2E4." }),
+      /* @__PURE__ */ jsx("div", { style: { ...mutedStyle, fontSize: "13px" }, children: "\uC5D0\uC774\uC804\uD2B8 \uADF8\uB798\uD504, \uCF54\uB4DC KG, \uBBF8\uC158\uBCF4\uB4DC \uC774\uC288 \uADF8\uB798\uD504\uB97C \uADDC\uCE59 \uAE30\uBC18\uC73C\uB85C \uD569\uCCD0 \uC6B4\uC601 \uAC74\uAC15\uB3C4\uC640 \uD6C4\uC18D \uBBF8\uC158 \uAD00\uACC4\uB97C \uC810\uAC80\uD569\uB2C8\uB2E4." }),
       /* @__PURE__ */ jsxs("div", { style: mutedStyle, children: [
         "agents: ",
         snapshot.data.meta.agentCount,
         " \xB7 issues: ",
         snapshot.data.meta.issueCount,
-        " \xB7 generated: ",
+        "\xB7 generated: ",
         new Date(snapshot.data.meta.generatedAt).toLocaleString("ko-KR")
       ] })
     ] }),
@@ -30544,9 +30549,9 @@ function SystemGardenPage({ context }) {
       /* @__PURE__ */ jsxs("div", { style: { display: "flex", justifyContent: "space-between", alignItems: "center", gap: "10px", flexWrap: "wrap" }, children: [
         /* @__PURE__ */ jsx("h2", { style: panelTitleStyle, children: "Graph" }),
         /* @__PURE__ */ jsx("div", { style: { display: "inline-flex", gap: "6px", background: "rgba(15,23,42,0.55)", borderRadius: "999px", padding: "4px" }, children: [
-          { value: "all", label: "\uC804\uCCB4" },
           { value: "agent", label: "\uC5D0\uC774\uC804\uD2B8\uB9CC" },
-          { value: "code", label: "\uCF54\uB4DC\uB9CC" }
+          { value: "code", label: "\uCF54\uB4DC\uB9CC" },
+          { value: "all", label: "\uC804\uCCB4" }
         ].map((option) => /* @__PURE__ */ jsx(
           "button",
           {
@@ -30596,7 +30601,16 @@ function SystemGardenPage({ context }) {
               background: "color-mix(in srgb, var(--card, #0b1220) 92%, transparent)",
               padding: "12px"
             },
-            children: /* @__PURE__ */ jsx(AgentDetailPanel, { selectedNode, detail: detail.data ?? null, loading: detail.loading })
+            children: /* @__PURE__ */ jsx(
+              NodeDetailPanel,
+              {
+                selectedNode,
+                detail: detail.data ?? null,
+                loading: detail.loading,
+                nodes: filteredGraph.nodes,
+                edges: filteredGraph.edges
+              }
+            )
           }
         )
       ] })
@@ -30639,23 +30653,23 @@ function GardenHelpSection() {
       /* @__PURE__ */ jsx("p", { style: { ...mutedStyle, fontWeight: 600, fontSize: "14px", marginBottom: "8px" }, children: "System Garden \uB3C4\uC6C0\uB9D0" }),
       /* @__PURE__ */ jsx("p", { style: { ...mutedStyle, fontWeight: 600, marginTop: "12px" }, children: "\uAE30\uBCF8 \uAC1C\uB150" }),
       /* @__PURE__ */ jsxs("ul", { style: { margin: "4px 0", paddingLeft: "20px" }, children: [
-        /* @__PURE__ */ jsx("li", { children: "\uC5D0\uC774\uC804\uD2B8 \uC870\uC9C1\uB3C4\uC640 \uB3C4\uAD6C \uC5F0\uACB0\uC744 \uD1A0\uD3F4\uB85C\uC9C0 \uADF8\uB798\uD504\uB85C \uC2DC\uAC01\uD654" }),
+        /* @__PURE__ */ jsx("li", { children: "\uC5D0\uC774\uC804\uD2B8 \uC870\uC9C1\uB3C4, \uB3C4\uAD6C \uC5F0\uACB0, \uBBF8\uC158\uBCF4\uB4DC \uC774\uC288\uB97C \uD1A0\uD3F4\uB85C\uC9C0 \uADF8\uB798\uD504\uB85C \uC2DC\uAC01\uD654" }),
         /* @__PURE__ */ jsx("li", { children: "Health Card\uB85C \uC5D0\uC774\uC804\uD2B8\uBCC4 \uC5C5\uBB34 \uC0C1\uD0DC \uBAA8\uB2C8\uD130\uB9C1" }),
         /* @__PURE__ */ jsx("li", { children: "Meta Question\uC73C\uB85C \uC870\uC9C1 \uAC1C\uC120 \uD3EC\uC778\uD2B8 \uC81C\uC548" })
       ] }),
       /* @__PURE__ */ jsx("p", { style: { ...mutedStyle, fontWeight: 600, marginTop: "12px" }, children: "\uB808\uC774\uC5B4 \uD544\uD130" }),
       /* @__PURE__ */ jsxs("ul", { style: { margin: "4px 0", paddingLeft: "20px" }, children: [
         /* @__PURE__ */ jsxs("li", { children: [
-          /* @__PURE__ */ jsx("strong", { children: "All" }),
-          ": \uC5D0\uC774\uC804\uD2B8 + \uCF54\uB4DC/\uB3C4\uAD6C \uB178\uB4DC \uC804\uCCB4"
-        ] }),
-        /* @__PURE__ */ jsxs("li", { children: [
           /* @__PURE__ */ jsx("strong", { children: "Agent" }),
           ": \uC5D0\uC774\uC804\uD2B8 \uC870\uC9C1\uB3C4\uB9CC"
         ] }),
         /* @__PURE__ */ jsxs("li", { children: [
           /* @__PURE__ */ jsx("strong", { children: "Code" }),
-          ": Tool Registry \uB3C4\uAD6C \uB178\uB4DC\uB9CC"
+          ": Tool Registry \uB3C4\uAD6C / KG \uB178\uB4DC\uB9CC"
+        ] }),
+        /* @__PURE__ */ jsxs("li", { children: [
+          /* @__PURE__ */ jsx("strong", { children: "All" }),
+          ": \uC5D0\uC774\uC804\uD2B8 + \uCF54\uB4DC/\uB3C4\uAD6C + \uC774\uC288 \uC804\uCCB4"
         ] })
       ] }),
       /* @__PURE__ */ jsx("p", { style: { ...mutedStyle, fontWeight: 600, marginTop: "12px" }, children: "\uC124\uC815" }),

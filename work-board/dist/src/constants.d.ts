@@ -4,6 +4,13 @@ export declare const PLUGIN_DISPLAY_NAME = "Mission Board";
 export declare const PAGE_ROUTE = "work-board";
 export declare const COLUMN_UNASSIGNED = "\uBBF8\uBD84\uB958";
 export declare const UNIQUE_WORK_LABELS: readonly ["[고유업무]", "고유업무"];
+export declare const NODE_COLORS: {
+    readonly agent: "#22c55e";
+    readonly issueParent: "#38bdf8";
+    readonly issueChild: "#fb923c";
+    readonly issueStandalone: "#94a3b8";
+    readonly default: "#64748b";
+};
 export declare const SLOT_IDS: {
     readonly page: "work-board-page";
     readonly sidebar: "work-board-sidebar-link";

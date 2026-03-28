@@ -4,17 +4,17 @@ var __export = (target, all) => {
     __defProp(target, name, { get: all[name], enumerable: true });
 };
 
-// node_modules/@paperclipai/plugin-sdk/dist/define-plugin.js
+// node_modules/.pnpm/@paperclipai+plugin-sdk@2026.325.0_react@19.2.4/node_modules/@paperclipai/plugin-sdk/dist/define-plugin.js
 function definePlugin(definition) {
   return Object.freeze({ definition });
 }
 
-// node_modules/@paperclipai/plugin-sdk/dist/worker-rpc-host.js
+// node_modules/.pnpm/@paperclipai+plugin-sdk@2026.325.0_react@19.2.4/node_modules/@paperclipai/plugin-sdk/dist/worker-rpc-host.js
 import path from "node:path";
 import { createInterface } from "node:readline";
 import { fileURLToPath } from "node:url";
 
-// node_modules/@paperclipai/plugin-sdk/dist/protocol.js
+// node_modules/.pnpm/@paperclipai+plugin-sdk@2026.325.0_react@19.2.4/node_modules/@paperclipai/plugin-sdk/dist/protocol.js
 var JSONRPC_VERSION = "2.0";
 var JSONRPC_ERROR_CODES = {
   /** Invalid JSON was received by the server. */
@@ -144,7 +144,7 @@ var JsonRpcCallError = class extends Error {
   }
 };
 
-// node_modules/@paperclipai/plugin-sdk/dist/worker-rpc-host.js
+// node_modules/.pnpm/@paperclipai+plugin-sdk@2026.325.0_react@19.2.4/node_modules/@paperclipai/plugin-sdk/dist/worker-rpc-host.js
 var DEFAULT_RPC_TIMEOUT_MS = 3e4;
 function runWorker(plugin2, moduleUrl, options) {
   if (options?.stdin != null && options?.stdout != null) {
@@ -895,7 +895,7 @@ function startWorkerRpcHost(options) {
   };
 }
 
-// node_modules/zod/v3/external.js
+// node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/external.js
 var external_exports = {};
 __export(external_exports, {
   BRAND: () => BRAND,
@@ -1007,7 +1007,7 @@ __export(external_exports, {
   void: () => voidType
 });
 
-// node_modules/zod/v3/helpers/util.js
+// node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/helpers/util.js
 var util;
 (function(util2) {
   util2.assertEqual = (_) => {
@@ -1141,7 +1141,7 @@ var getParsedType = (data) => {
   }
 };
 
-// node_modules/zod/v3/ZodError.js
+// node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/ZodError.js
 var ZodIssueCode = util.arrayToEnum([
   "invalid_type",
   "invalid_literal",
@@ -1259,7 +1259,7 @@ ZodError.create = (issues) => {
   return error;
 };
 
-// node_modules/zod/v3/locales/en.js
+// node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/locales/en.js
 var errorMap = (issue, _ctx) => {
   let message;
   switch (issue.code) {
@@ -1362,7 +1362,7 @@ var errorMap = (issue, _ctx) => {
 };
 var en_default = errorMap;
 
-// node_modules/zod/v3/errors.js
+// node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/errors.js
 var overrideErrorMap = en_default;
 function setErrorMap(map) {
   overrideErrorMap = map;
@@ -1371,7 +1371,7 @@ function getErrorMap() {
   return overrideErrorMap;
 }
 
-// node_modules/zod/v3/helpers/parseUtil.js
+// node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/helpers/parseUtil.js
 var makeIssue = (params) => {
   const { data, path: path2, errorMaps, issueData } = params;
   const fullPath = [...path2, ...issueData.path || []];
@@ -1481,14 +1481,14 @@ var isDirty = (x) => x.status === "dirty";
 var isValid = (x) => x.status === "valid";
 var isAsync = (x) => typeof Promise !== "undefined" && x instanceof Promise;
 
-// node_modules/zod/v3/helpers/errorUtil.js
+// node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/helpers/errorUtil.js
 var errorUtil;
 (function(errorUtil2) {
   errorUtil2.errToObj = (message) => typeof message === "string" ? { message } : message || {};
   errorUtil2.toString = (message) => typeof message === "string" ? message : message?.message;
 })(errorUtil || (errorUtil = {}));
 
-// node_modules/zod/v3/types.js
+// node_modules/.pnpm/zod@3.25.76/node_modules/zod/v3/types.js
 var ParseInputLazyPath = class {
   constructor(parent, value, path2, key) {
     this._cachedPath = [];
@@ -4936,7 +4936,7 @@ var coerce = {
 };
 var NEVER = INVALID;
 
-// node_modules/@paperclipai/shared/dist/constants.js
+// node_modules/.pnpm/@paperclipai+shared@2026.325.0/node_modules/@paperclipai/shared/dist/constants.js
 var COMPANY_STATUSES = ["active", "paused", "archived"];
 var DEPLOYMENT_MODES = ["local_trusted", "authenticated"];
 var DEPLOYMENT_EXPOSURES = ["private", "public"];
@@ -5036,6 +5036,10 @@ var PROJECT_STATUSES = [
   "completed",
   "cancelled"
 ];
+var ROUTINE_STATUSES = ["active", "paused", "archived"];
+var ROUTINE_CONCURRENCY_POLICIES = ["coalesce_if_active", "always_enqueue", "skip_if_active"];
+var ROUTINE_CATCH_UP_POLICIES = ["skip_missed", "enqueue_missed_with_cap"];
+var ROUTINE_TRIGGER_SIGNING_MODES = ["bearer", "hmac_sha256"];
 var APPROVAL_TYPES = ["hire_agent", "approve_ceo_strategy", "budget_override_required"];
 var SECRET_PROVIDERS = [
   "local_encrypted",
@@ -5253,13 +5257,18 @@ var PLUGIN_STATE_SCOPE_KINDS = [
   "run"
 ];
 
-// node_modules/@paperclipai/shared/dist/validators/instance.js
+// node_modules/.pnpm/@paperclipai+shared@2026.325.0/node_modules/@paperclipai/shared/dist/validators/instance.js
+var instanceGeneralSettingsSchema = external_exports.object({
+  censorUsernameInLogs: external_exports.boolean().default(false)
+}).strict();
+var patchInstanceGeneralSettingsSchema = instanceGeneralSettingsSchema.partial();
 var instanceExperimentalSettingsSchema = external_exports.object({
-  enableIsolatedWorkspaces: external_exports.boolean().default(false)
+  enableIsolatedWorkspaces: external_exports.boolean().default(false),
+  autoRestartDevServerWhenIdle: external_exports.boolean().default(false)
 }).strict();
 var patchInstanceExperimentalSettingsSchema = instanceExperimentalSettingsSchema.partial();
 
-// node_modules/@paperclipai/shared/dist/validators/budget.js
+// node_modules/.pnpm/@paperclipai+shared@2026.325.0/node_modules/@paperclipai/shared/dist/validators/budget.js
 var upsertBudgetPolicySchema = external_exports.object({
   scopeType: external_exports.enum(BUDGET_SCOPE_TYPES),
   scopeId: external_exports.string().uuid(),
@@ -5285,8 +5294,9 @@ var resolveBudgetIncidentSchema = external_exports.object({
   }
 });
 
-// node_modules/@paperclipai/shared/dist/validators/company.js
+// node_modules/.pnpm/@paperclipai+shared@2026.325.0/node_modules/@paperclipai/shared/dist/validators/company.js
 var logoAssetIdSchema = external_exports.string().uuid().nullable().optional();
+var brandColorSchema = external_exports.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional();
 var createCompanySchema = external_exports.object({
   name: external_exports.string().min(1),
   description: external_exports.string().optional().nullable(),
@@ -5296,32 +5306,222 @@ var updateCompanySchema = createCompanySchema.partial().extend({
   status: external_exports.enum(COMPANY_STATUSES).optional(),
   spentMonthlyCents: external_exports.number().int().nonnegative().optional(),
   requireBoardApprovalForNewAgents: external_exports.boolean().optional(),
-  brandColor: external_exports.string().regex(/^#[0-9a-fA-F]{6}$/).nullable().optional(),
+  brandColor: brandColorSchema,
   logoAssetId: logoAssetIdSchema
 });
+var updateCompanyBrandingSchema = external_exports.object({
+  name: external_exports.string().min(1).optional(),
+  description: external_exports.string().nullable().optional(),
+  brandColor: brandColorSchema,
+  logoAssetId: logoAssetIdSchema
+}).strict().refine((value) => value.name !== void 0 || value.description !== void 0 || value.brandColor !== void 0 || value.logoAssetId !== void 0, "At least one branding field must be provided");
 
-// node_modules/@paperclipai/shared/dist/validators/company-portability.js
+// node_modules/.pnpm/@paperclipai+shared@2026.325.0/node_modules/@paperclipai/shared/dist/validators/company-skill.js
+var companySkillSourceTypeSchema = external_exports.enum(["local_path", "github", "url", "catalog", "skills_sh"]);
+var companySkillTrustLevelSchema = external_exports.enum(["markdown_only", "assets", "scripts_executables"]);
+var companySkillCompatibilitySchema = external_exports.enum(["compatible", "unknown", "invalid"]);
+var companySkillSourceBadgeSchema = external_exports.enum(["paperclip", "github", "local", "url", "catalog", "skills_sh"]);
+var companySkillFileInventoryEntrySchema = external_exports.object({
+  path: external_exports.string().min(1),
+  kind: external_exports.enum(["skill", "markdown", "reference", "script", "asset", "other"])
+});
+var companySkillSchema = external_exports.object({
+  id: external_exports.string().uuid(),
+  companyId: external_exports.string().uuid(),
+  key: external_exports.string().min(1),
+  slug: external_exports.string().min(1),
+  name: external_exports.string().min(1),
+  description: external_exports.string().nullable(),
+  markdown: external_exports.string(),
+  sourceType: companySkillSourceTypeSchema,
+  sourceLocator: external_exports.string().nullable(),
+  sourceRef: external_exports.string().nullable(),
+  trustLevel: companySkillTrustLevelSchema,
+  compatibility: companySkillCompatibilitySchema,
+  fileInventory: external_exports.array(companySkillFileInventoryEntrySchema).default([]),
+  metadata: external_exports.record(external_exports.unknown()).nullable(),
+  createdAt: external_exports.coerce.date(),
+  updatedAt: external_exports.coerce.date()
+});
+var companySkillListItemSchema = companySkillSchema.extend({
+  attachedAgentCount: external_exports.number().int().nonnegative(),
+  editable: external_exports.boolean(),
+  editableReason: external_exports.string().nullable(),
+  sourceLabel: external_exports.string().nullable(),
+  sourceBadge: companySkillSourceBadgeSchema
+});
+var companySkillUsageAgentSchema = external_exports.object({
+  id: external_exports.string().uuid(),
+  name: external_exports.string().min(1),
+  urlKey: external_exports.string().min(1),
+  adapterType: external_exports.string().min(1),
+  desired: external_exports.boolean(),
+  actualState: external_exports.string().nullable()
+});
+var companySkillDetailSchema = companySkillSchema.extend({
+  attachedAgentCount: external_exports.number().int().nonnegative(),
+  usedByAgents: external_exports.array(companySkillUsageAgentSchema).default([]),
+  editable: external_exports.boolean(),
+  editableReason: external_exports.string().nullable(),
+  sourceLabel: external_exports.string().nullable(),
+  sourceBadge: companySkillSourceBadgeSchema
+});
+var companySkillUpdateStatusSchema = external_exports.object({
+  supported: external_exports.boolean(),
+  reason: external_exports.string().nullable(),
+  trackingRef: external_exports.string().nullable(),
+  currentRef: external_exports.string().nullable(),
+  latestRef: external_exports.string().nullable(),
+  hasUpdate: external_exports.boolean()
+});
+var companySkillImportSchema = external_exports.object({
+  source: external_exports.string().min(1)
+});
+var companySkillProjectScanRequestSchema = external_exports.object({
+  projectIds: external_exports.array(external_exports.string().uuid()).optional(),
+  workspaceIds: external_exports.array(external_exports.string().uuid()).optional()
+});
+var companySkillProjectScanSkippedSchema = external_exports.object({
+  projectId: external_exports.string().uuid(),
+  projectName: external_exports.string().min(1),
+  workspaceId: external_exports.string().uuid().nullable(),
+  workspaceName: external_exports.string().nullable(),
+  path: external_exports.string().nullable(),
+  reason: external_exports.string().min(1)
+});
+var companySkillProjectScanConflictSchema = external_exports.object({
+  slug: external_exports.string().min(1),
+  key: external_exports.string().min(1),
+  projectId: external_exports.string().uuid(),
+  projectName: external_exports.string().min(1),
+  workspaceId: external_exports.string().uuid(),
+  workspaceName: external_exports.string().min(1),
+  path: external_exports.string().min(1),
+  existingSkillId: external_exports.string().uuid(),
+  existingSkillKey: external_exports.string().min(1),
+  existingSourceLocator: external_exports.string().nullable(),
+  reason: external_exports.string().min(1)
+});
+var companySkillProjectScanResultSchema = external_exports.object({
+  scannedProjects: external_exports.number().int().nonnegative(),
+  scannedWorkspaces: external_exports.number().int().nonnegative(),
+  discovered: external_exports.number().int().nonnegative(),
+  imported: external_exports.array(companySkillSchema),
+  updated: external_exports.array(companySkillSchema),
+  skipped: external_exports.array(companySkillProjectScanSkippedSchema),
+  conflicts: external_exports.array(companySkillProjectScanConflictSchema),
+  warnings: external_exports.array(external_exports.string())
+});
+var companySkillCreateSchema = external_exports.object({
+  name: external_exports.string().min(1),
+  slug: external_exports.string().min(1).nullable().optional(),
+  description: external_exports.string().nullable().optional(),
+  markdown: external_exports.string().nullable().optional()
+});
+var companySkillFileDetailSchema = external_exports.object({
+  skillId: external_exports.string().uuid(),
+  path: external_exports.string().min(1),
+  kind: external_exports.enum(["skill", "markdown", "reference", "script", "asset", "other"]),
+  content: external_exports.string(),
+  language: external_exports.string().nullable(),
+  markdown: external_exports.boolean(),
+  editable: external_exports.boolean()
+});
+var companySkillFileUpdateSchema = external_exports.object({
+  path: external_exports.string().min(1),
+  content: external_exports.string()
+});
+
+// node_modules/.pnpm/@paperclipai+shared@2026.325.0/node_modules/@paperclipai/shared/dist/validators/adapter-skills.js
+var agentSkillStateSchema = external_exports.enum([
+  "available",
+  "configured",
+  "installed",
+  "missing",
+  "stale",
+  "external"
+]);
+var agentSkillOriginSchema = external_exports.enum([
+  "company_managed",
+  "paperclip_required",
+  "user_installed",
+  "external_unknown"
+]);
+var agentSkillSyncModeSchema = external_exports.enum([
+  "unsupported",
+  "persistent",
+  "ephemeral"
+]);
+var agentSkillEntrySchema = external_exports.object({
+  key: external_exports.string().min(1),
+  runtimeName: external_exports.string().min(1).nullable(),
+  desired: external_exports.boolean(),
+  managed: external_exports.boolean(),
+  required: external_exports.boolean().optional(),
+  requiredReason: external_exports.string().nullable().optional(),
+  state: agentSkillStateSchema,
+  origin: agentSkillOriginSchema.optional(),
+  originLabel: external_exports.string().nullable().optional(),
+  locationLabel: external_exports.string().nullable().optional(),
+  readOnly: external_exports.boolean().optional(),
+  sourcePath: external_exports.string().nullable().optional(),
+  targetPath: external_exports.string().nullable().optional(),
+  detail: external_exports.string().nullable().optional()
+});
+var agentSkillSnapshotSchema = external_exports.object({
+  adapterType: external_exports.string().min(1),
+  supported: external_exports.boolean(),
+  mode: agentSkillSyncModeSchema,
+  desiredSkills: external_exports.array(external_exports.string().min(1)),
+  entries: external_exports.array(agentSkillEntrySchema),
+  warnings: external_exports.array(external_exports.string())
+});
+var agentSkillSyncSchema = external_exports.object({
+  desiredSkills: external_exports.array(external_exports.string().min(1))
+});
+
+// node_modules/.pnpm/@paperclipai+shared@2026.325.0/node_modules/@paperclipai/shared/dist/validators/company-portability.js
 var portabilityIncludeSchema = external_exports.object({
   company: external_exports.boolean().optional(),
-  agents: external_exports.boolean().optional()
+  agents: external_exports.boolean().optional(),
+  projects: external_exports.boolean().optional(),
+  issues: external_exports.boolean().optional(),
+  skills: external_exports.boolean().optional()
 }).partial();
-var portabilitySecretRequirementSchema = external_exports.object({
+var portabilityEnvInputSchema = external_exports.object({
   key: external_exports.string().min(1),
   description: external_exports.string().nullable(),
   agentSlug: external_exports.string().min(1).nullable(),
-  providerHint: external_exports.string().nullable()
+  kind: external_exports.enum(["secret", "plain"]),
+  requirement: external_exports.enum(["required", "optional"]),
+  defaultValue: external_exports.string().nullable(),
+  portability: external_exports.enum(["portable", "system_dependent"])
 });
+var portabilityFileEntrySchema = external_exports.union([
+  external_exports.string(),
+  external_exports.object({
+    encoding: external_exports.literal("base64"),
+    data: external_exports.string(),
+    contentType: external_exports.string().min(1).optional().nullable()
+  })
+]);
 var portabilityCompanyManifestEntrySchema = external_exports.object({
   path: external_exports.string().min(1),
   name: external_exports.string().min(1),
   description: external_exports.string().nullable(),
   brandColor: external_exports.string().nullable(),
+  logoPath: external_exports.string().nullable(),
   requireBoardApprovalForNewAgents: external_exports.boolean()
+});
+var portabilitySidebarOrderSchema = external_exports.object({
+  agents: external_exports.array(external_exports.string().min(1)).default([]),
+  projects: external_exports.array(external_exports.string().min(1)).default([])
 });
 var portabilityAgentManifestEntrySchema = external_exports.object({
   slug: external_exports.string().min(1),
   name: external_exports.string().min(1),
   path: external_exports.string().min(1),
+  skills: external_exports.array(external_exports.string().min(1)).default([]),
   role: external_exports.string().min(1),
   title: external_exports.string().nullable(),
   icon: external_exports.string().nullable(),
@@ -5334,6 +5534,83 @@ var portabilityAgentManifestEntrySchema = external_exports.object({
   budgetMonthlyCents: external_exports.number().int().nonnegative(),
   metadata: external_exports.record(external_exports.unknown()).nullable()
 });
+var portabilitySkillManifestEntrySchema = external_exports.object({
+  key: external_exports.string().min(1),
+  slug: external_exports.string().min(1),
+  name: external_exports.string().min(1),
+  path: external_exports.string().min(1),
+  description: external_exports.string().nullable(),
+  sourceType: external_exports.string().min(1),
+  sourceLocator: external_exports.string().nullable(),
+  sourceRef: external_exports.string().nullable(),
+  trustLevel: external_exports.string().nullable(),
+  compatibility: external_exports.string().nullable(),
+  metadata: external_exports.record(external_exports.unknown()).nullable(),
+  fileInventory: external_exports.array(external_exports.object({
+    path: external_exports.string().min(1),
+    kind: external_exports.string().min(1)
+  })).default([])
+});
+var portabilityProjectManifestEntrySchema = external_exports.object({
+  slug: external_exports.string().min(1),
+  name: external_exports.string().min(1),
+  path: external_exports.string().min(1),
+  description: external_exports.string().nullable(),
+  ownerAgentSlug: external_exports.string().min(1).nullable(),
+  leadAgentSlug: external_exports.string().min(1).nullable(),
+  targetDate: external_exports.string().nullable(),
+  color: external_exports.string().nullable(),
+  status: external_exports.string().nullable(),
+  executionWorkspacePolicy: external_exports.record(external_exports.unknown()).nullable(),
+  workspaces: external_exports.array(external_exports.object({
+    key: external_exports.string().min(1),
+    name: external_exports.string().min(1),
+    sourceType: external_exports.string().nullable(),
+    repoUrl: external_exports.string().nullable(),
+    repoRef: external_exports.string().nullable(),
+    defaultRef: external_exports.string().nullable(),
+    visibility: external_exports.string().nullable(),
+    setupCommand: external_exports.string().nullable(),
+    cleanupCommand: external_exports.string().nullable(),
+    metadata: external_exports.record(external_exports.unknown()).nullable(),
+    isPrimary: external_exports.boolean()
+  })).default([]),
+  metadata: external_exports.record(external_exports.unknown()).nullable()
+});
+var portabilityIssueRoutineTriggerManifestEntrySchema = external_exports.object({
+  kind: external_exports.string().min(1),
+  label: external_exports.string().nullable(),
+  enabled: external_exports.boolean(),
+  cronExpression: external_exports.string().nullable(),
+  timezone: external_exports.string().nullable(),
+  signingMode: external_exports.string().nullable(),
+  replayWindowSec: external_exports.number().int().nullable()
+});
+var portabilityIssueRoutineManifestEntrySchema = external_exports.object({
+  concurrencyPolicy: external_exports.string().nullable(),
+  catchUpPolicy: external_exports.string().nullable(),
+  triggers: external_exports.array(portabilityIssueRoutineTriggerManifestEntrySchema).default([])
+});
+var portabilityIssueManifestEntrySchema = external_exports.object({
+  slug: external_exports.string().min(1),
+  identifier: external_exports.string().min(1).nullable(),
+  title: external_exports.string().min(1),
+  path: external_exports.string().min(1),
+  projectSlug: external_exports.string().min(1).nullable(),
+  projectWorkspaceKey: external_exports.string().min(1).nullable(),
+  assigneeAgentSlug: external_exports.string().min(1).nullable(),
+  description: external_exports.string().nullable(),
+  recurring: external_exports.boolean().default(false),
+  routine: portabilityIssueRoutineManifestEntrySchema.nullable(),
+  legacyRecurrence: external_exports.record(external_exports.unknown()).nullable(),
+  status: external_exports.string().nullable(),
+  priority: external_exports.string().nullable(),
+  labelIds: external_exports.array(external_exports.string().min(1)).default([]),
+  billingCode: external_exports.string().nullable(),
+  executionWorkspaceSettings: external_exports.record(external_exports.unknown()).nullable(),
+  assigneeAdapterOverrides: external_exports.record(external_exports.unknown()).nullable(),
+  metadata: external_exports.record(external_exports.unknown()).nullable()
+});
 var portabilityManifestSchema = external_exports.object({
   schemaVersion: external_exports.number().int().positive(),
   generatedAt: external_exports.string().datetime(),
@@ -5343,21 +5620,24 @@ var portabilityManifestSchema = external_exports.object({
   }).nullable(),
   includes: external_exports.object({
     company: external_exports.boolean(),
-    agents: external_exports.boolean()
+    agents: external_exports.boolean(),
+    projects: external_exports.boolean(),
+    issues: external_exports.boolean(),
+    skills: external_exports.boolean()
   }),
   company: portabilityCompanyManifestEntrySchema.nullable(),
+  sidebar: portabilitySidebarOrderSchema.nullable(),
   agents: external_exports.array(portabilityAgentManifestEntrySchema),
-  requiredSecrets: external_exports.array(portabilitySecretRequirementSchema).default([])
+  skills: external_exports.array(portabilitySkillManifestEntrySchema).default([]),
+  projects: external_exports.array(portabilityProjectManifestEntrySchema).default([]),
+  issues: external_exports.array(portabilityIssueManifestEntrySchema).default([]),
+  envInputs: external_exports.array(portabilityEnvInputSchema).default([])
 });
 var portabilitySourceSchema = external_exports.discriminatedUnion("type", [
   external_exports.object({
     type: external_exports.literal("inline"),
-    manifest: portabilityManifestSchema,
-    files: external_exports.record(external_exports.string())
-  }),
-  external_exports.object({
-    type: external_exports.literal("url"),
-    url: external_exports.string().url()
+    rootPath: external_exports.string().min(1).optional().nullable(),
+    files: external_exports.record(portabilityFileEntrySchema)
   }),
   external_exports.object({
     type: external_exports.literal("github"),
@@ -5380,17 +5660,34 @@ var portabilityAgentSelectionSchema = external_exports.union([
 ]);
 var portabilityCollisionStrategySchema = external_exports.enum(["rename", "skip", "replace"]);
 var companyPortabilityExportSchema = external_exports.object({
-  include: portabilityIncludeSchema.optional()
+  include: portabilityIncludeSchema.optional(),
+  agents: external_exports.array(external_exports.string().min(1)).optional(),
+  skills: external_exports.array(external_exports.string().min(1)).optional(),
+  projects: external_exports.array(external_exports.string().min(1)).optional(),
+  issues: external_exports.array(external_exports.string().min(1)).optional(),
+  projectIssues: external_exports.array(external_exports.string().min(1)).optional(),
+  selectedFiles: external_exports.array(external_exports.string().min(1)).optional(),
+  expandReferencedSkills: external_exports.boolean().optional(),
+  sidebarOrder: portabilitySidebarOrderSchema.partial().optional()
 });
 var companyPortabilityPreviewSchema = external_exports.object({
   source: portabilitySourceSchema,
   include: portabilityIncludeSchema.optional(),
   target: portabilityTargetSchema,
   agents: portabilityAgentSelectionSchema.optional(),
-  collisionStrategy: portabilityCollisionStrategySchema.optional()
+  collisionStrategy: portabilityCollisionStrategySchema.optional(),
+  nameOverrides: external_exports.record(external_exports.string().min(1), external_exports.string().min(1)).optional(),
+  selectedFiles: external_exports.array(external_exports.string().min(1)).optional()
+});
+var portabilityAdapterOverrideSchema = external_exports.object({
+  adapterType: external_exports.string().min(1),
+  adapterConfig: external_exports.record(external_exports.unknown()).optional()
+});
+var companyPortabilityImportSchema = companyPortabilityPreviewSchema.extend({
+  adapterOverrides: external_exports.record(external_exports.string().min(1), portabilityAdapterOverrideSchema).optional()
 });
 
-// node_modules/@paperclipai/shared/dist/validators/secret.js
+// node_modules/.pnpm/@paperclipai+shared@2026.325.0/node_modules/@paperclipai/shared/dist/validators/secret.js
 var envBindingPlainSchema = external_exports.object({
   type: external_exports.literal("plain"),
   value: external_exports.string()
@@ -5423,9 +5720,21 @@ var updateSecretSchema = external_exports.object({
   externalRef: external_exports.string().optional().nullable()
 });
 
-// node_modules/@paperclipai/shared/dist/validators/agent.js
+// node_modules/.pnpm/@paperclipai+shared@2026.325.0/node_modules/@paperclipai/shared/dist/validators/agent.js
 var agentPermissionsSchema = external_exports.object({
   canCreateAgents: external_exports.boolean().optional().default(false)
+});
+var agentInstructionsBundleModeSchema = external_exports.enum(["managed", "external"]);
+var updateAgentInstructionsBundleSchema = external_exports.object({
+  mode: agentInstructionsBundleModeSchema.optional(),
+  rootPath: external_exports.string().trim().min(1).nullable().optional(),
+  entryFile: external_exports.string().trim().min(1).optional(),
+  clearLegacyPromptTemplate: external_exports.boolean().optional().default(false)
+});
+var upsertAgentInstructionsFileSchema = external_exports.object({
+  path: external_exports.string().trim().min(1),
+  content: external_exports.string(),
+  clearLegacyPromptTemplate: external_exports.boolean().optional().default(false)
 });
 var adapterConfigSchema = external_exports.record(external_exports.unknown()).superRefine((value, ctx) => {
   const envValue = value.env;
@@ -5447,6 +5756,7 @@ var createAgentSchema = external_exports.object({
   icon: external_exports.enum(AGENT_ICON_NAMES).optional().nullable(),
   reportsTo: external_exports.string().uuid().optional().nullable(),
   capabilities: external_exports.string().optional().nullable(),
+  desiredSkills: external_exports.array(external_exports.string().min(1)).optional(),
   adapterType: external_exports.enum(AGENT_ADAPTER_TYPES).optional().default("process"),
   adapterConfig: adapterConfigSchema.optional().default({}),
   runtimeConfig: external_exports.record(external_exports.unknown()).optional().default({}),
@@ -5460,6 +5770,7 @@ var createAgentHireSchema = createAgentSchema.extend({
 });
 var updateAgentSchema = createAgentSchema.omit({ permissions: true }).partial().extend({
   permissions: external_exports.never().optional(),
+  replaceAdapterConfig: external_exports.boolean().optional(),
   status: external_exports.enum(AGENT_STATUSES).optional(),
   spentMonthlyCents: external_exports.number().int().nonnegative().optional()
 });
@@ -5485,10 +5796,11 @@ var testAdapterEnvironmentSchema = external_exports.object({
   adapterConfig: adapterConfigSchema.optional().default({})
 });
 var updateAgentPermissionsSchema = external_exports.object({
-  canCreateAgents: external_exports.boolean()
+  canCreateAgents: external_exports.boolean(),
+  canAssignTasks: external_exports.boolean()
 });
 
-// node_modules/@paperclipai/shared/dist/validators/project.js
+// node_modules/.pnpm/@paperclipai+shared@2026.325.0/node_modules/@paperclipai/shared/dist/validators/project.js
 var executionWorkspaceStrategySchema = external_exports.object({
   type: external_exports.enum(["project_primary", "git_worktree", "adapter_managed", "cloud_sandbox"]).optional(),
   baseRef: external_exports.string().optional().nullable(),
@@ -5576,7 +5888,7 @@ var createProjectSchema = external_exports.object({
 });
 var updateProjectSchema = external_exports.object(projectFields).partial();
 
-// node_modules/@paperclipai/shared/dist/validators/issue.js
+// node_modules/.pnpm/@paperclipai+shared@2026.325.0/node_modules/@paperclipai/shared/dist/validators/issue.js
 var executionWorkspaceStrategySchema2 = external_exports.object({
   type: external_exports.enum(["project_primary", "git_worktree", "adapter_managed", "cloud_sandbox"]).optional(),
   baseRef: external_exports.string().optional().nullable(),
@@ -5626,6 +5938,7 @@ var createIssueLabelSchema = external_exports.object({
 });
 var updateIssueSchema = createIssueSchema.partial().extend({
   comment: external_exports.string().min(1).optional(),
+  reopen: external_exports.boolean().optional(),
   hiddenAt: external_exports.string().datetime().nullable().optional()
 });
 var checkoutIssueSchema = external_exports.object({
@@ -5654,7 +5967,7 @@ var upsertIssueDocumentSchema = external_exports.object({
   baseRevisionId: external_exports.string().uuid().nullable().optional()
 });
 
-// node_modules/@paperclipai/shared/dist/validators/work-product.js
+// node_modules/.pnpm/@paperclipai+shared@2026.325.0/node_modules/@paperclipai/shared/dist/validators/work-product.js
 var issueWorkProductTypeSchema = external_exports.enum([
   "preview_url",
   "runtime_service",
@@ -5700,7 +6013,7 @@ var createIssueWorkProductSchema = external_exports.object({
 });
 var updateIssueWorkProductSchema = createIssueWorkProductSchema.partial();
 
-// node_modules/@paperclipai/shared/dist/validators/execution-workspace.js
+// node_modules/.pnpm/@paperclipai+shared@2026.325.0/node_modules/@paperclipai/shared/dist/validators/execution-workspace.js
 var executionWorkspaceStatusSchema = external_exports.enum([
   "active",
   "idle",
@@ -5715,7 +6028,7 @@ var updateExecutionWorkspaceSchema = external_exports.object({
   metadata: external_exports.record(external_exports.unknown()).optional().nullable()
 }).strict();
 
-// node_modules/@paperclipai/shared/dist/validators/goal.js
+// node_modules/.pnpm/@paperclipai+shared@2026.325.0/node_modules/@paperclipai/shared/dist/validators/goal.js
 var createGoalSchema = external_exports.object({
   title: external_exports.string().min(1),
   description: external_exports.string().optional().nullable(),
@@ -5726,7 +6039,7 @@ var createGoalSchema = external_exports.object({
 });
 var updateGoalSchema = createGoalSchema.partial();
 
-// node_modules/@paperclipai/shared/dist/validators/approval.js
+// node_modules/.pnpm/@paperclipai+shared@2026.325.0/node_modules/@paperclipai/shared/dist/validators/approval.js
 var createApprovalSchema = external_exports.object({
   type: external_exports.enum(APPROVAL_TYPES),
   requestedByAgentId: external_exports.string().uuid().optional().nullable(),
@@ -5748,7 +6061,56 @@ var addApprovalCommentSchema = external_exports.object({
   body: external_exports.string().min(1)
 });
 
-// node_modules/@paperclipai/shared/dist/validators/cost.js
+// node_modules/.pnpm/@paperclipai+shared@2026.325.0/node_modules/@paperclipai/shared/dist/validators/routine.js
+var createRoutineSchema = external_exports.object({
+  projectId: external_exports.string().uuid(),
+  goalId: external_exports.string().uuid().optional().nullable(),
+  parentIssueId: external_exports.string().uuid().optional().nullable(),
+  title: external_exports.string().trim().min(1).max(200),
+  description: external_exports.string().optional().nullable(),
+  assigneeAgentId: external_exports.string().uuid(),
+  priority: external_exports.enum(ISSUE_PRIORITIES).optional().default("medium"),
+  status: external_exports.enum(ROUTINE_STATUSES).optional().default("active"),
+  concurrencyPolicy: external_exports.enum(ROUTINE_CONCURRENCY_POLICIES).optional().default("coalesce_if_active"),
+  catchUpPolicy: external_exports.enum(ROUTINE_CATCH_UP_POLICIES).optional().default("skip_missed")
+});
+var updateRoutineSchema = createRoutineSchema.partial();
+var baseTriggerSchema = external_exports.object({
+  label: external_exports.string().trim().max(120).optional().nullable(),
+  enabled: external_exports.boolean().optional().default(true)
+});
+var createRoutineTriggerSchema = external_exports.discriminatedUnion("kind", [
+  baseTriggerSchema.extend({
+    kind: external_exports.literal("schedule"),
+    cronExpression: external_exports.string().trim().min(1),
+    timezone: external_exports.string().trim().min(1).default("UTC")
+  }),
+  baseTriggerSchema.extend({
+    kind: external_exports.literal("webhook"),
+    signingMode: external_exports.enum(ROUTINE_TRIGGER_SIGNING_MODES).optional().default("bearer"),
+    replayWindowSec: external_exports.number().int().min(30).max(86400).optional().default(300)
+  }),
+  baseTriggerSchema.extend({
+    kind: external_exports.literal("api")
+  })
+]);
+var updateRoutineTriggerSchema = external_exports.object({
+  label: external_exports.string().trim().max(120).optional().nullable(),
+  enabled: external_exports.boolean().optional(),
+  cronExpression: external_exports.string().trim().min(1).optional().nullable(),
+  timezone: external_exports.string().trim().min(1).optional().nullable(),
+  signingMode: external_exports.enum(ROUTINE_TRIGGER_SIGNING_MODES).optional().nullable(),
+  replayWindowSec: external_exports.number().int().min(30).max(86400).optional().nullable()
+});
+var runRoutineSchema = external_exports.object({
+  triggerId: external_exports.string().uuid().optional().nullable(),
+  payload: external_exports.record(external_exports.unknown()).optional().nullable(),
+  idempotencyKey: external_exports.string().trim().max(255).optional().nullable(),
+  source: external_exports.enum(["manual", "api"]).optional().default("manual")
+});
+var rotateRoutineTriggerSecretSchema = external_exports.object({});
+
+// node_modules/.pnpm/@paperclipai+shared@2026.325.0/node_modules/@paperclipai/shared/dist/validators/cost.js
 var createCostEventSchema = external_exports.object({
   agentId: external_exports.string().uuid(),
   issueId: external_exports.string().uuid().optional().nullable(),
@@ -5773,7 +6135,7 @@ var updateBudgetSchema = external_exports.object({
   budgetMonthlyCents: external_exports.number().int().nonnegative()
 });
 
-// node_modules/@paperclipai/shared/dist/validators/finance.js
+// node_modules/.pnpm/@paperclipai+shared@2026.325.0/node_modules/@paperclipai/shared/dist/validators/finance.js
 var createFinanceEventSchema = external_exports.object({
   agentId: external_exports.string().uuid().optional().nullable(),
   issueId: external_exports.string().uuid().optional().nullable(),
@@ -5804,12 +6166,12 @@ var createFinanceEventSchema = external_exports.object({
   currency: value.currency.toUpperCase()
 }));
 
-// node_modules/@paperclipai/shared/dist/validators/asset.js
+// node_modules/.pnpm/@paperclipai+shared@2026.325.0/node_modules/@paperclipai/shared/dist/validators/asset.js
 var createAssetImageMetadataSchema = external_exports.object({
   namespace: external_exports.string().trim().min(1).max(120).regex(/^[a-zA-Z0-9/_-]+$/).optional()
 });
 
-// node_modules/@paperclipai/shared/dist/validators/access.js
+// node_modules/.pnpm/@paperclipai+shared@2026.325.0/node_modules/@paperclipai/shared/dist/validators/access.js
 var createCompanyInviteSchema = external_exports.object({
   allowedJoinTypes: external_exports.enum(INVITE_JOIN_TYPES).default("both"),
   defaultsPayload: external_exports.record(external_exports.string(), external_exports.unknown()).optional().nullable(),
@@ -5838,6 +6200,19 @@ var listJoinRequestsQuerySchema = external_exports.object({
 var claimJoinRequestApiKeySchema = external_exports.object({
   claimSecret: external_exports.string().min(16).max(256)
 });
+var boardCliAuthAccessLevelSchema = external_exports.enum([
+  "board",
+  "instance_admin_required"
+]);
+var createCliAuthChallengeSchema = external_exports.object({
+  command: external_exports.string().min(1).max(240),
+  clientName: external_exports.string().max(120).optional().nullable(),
+  requestedAccess: boardCliAuthAccessLevelSchema.default("board"),
+  requestedCompanyId: external_exports.string().uuid().optional().nullable()
+});
+var resolveCliAuthChallengeSchema = external_exports.object({
+  token: external_exports.string().min(16).max(256)
+});
 var updateMemberPermissionsSchema = external_exports.object({
   grants: external_exports.array(external_exports.object({
     permissionKey: external_exports.enum(PERMISSION_KEYS),
@@ -5848,7 +6223,7 @@ var updateUserCompanyAccessSchema = external_exports.object({
   companyIds: external_exports.array(external_exports.string().uuid()).default([])
 });
 
-// node_modules/@paperclipai/shared/dist/validators/plugin.js
+// node_modules/.pnpm/@paperclipai+shared@2026.325.0/node_modules/@paperclipai/shared/dist/validators/plugin.js
 var jsonSchemaSchema = external_exports.record(external_exports.unknown()).refine((val) => {
   if (Object.keys(val).length === 0)
     return true;
@@ -6217,7 +6592,7 @@ var listPluginStateSchema = external_exports.object({
   namespace: external_exports.string().min(1).optional()
 });
 
-// node_modules/@paperclipai/shared/dist/api.js
+// node_modules/.pnpm/@paperclipai+shared@2026.325.0/node_modules/@paperclipai/shared/dist/api.js
 var API_PREFIX = "/api";
 var API = {
   health: `${API_PREFIX}/health`,
@@ -6238,7 +6613,7 @@ var API = {
   admin: `${API_PREFIX}/admin`
 };
 
-// node_modules/@paperclipai/shared/dist/config-schema.js
+// node_modules/.pnpm/@paperclipai+shared@2026.325.0/node_modules/@paperclipai/shared/dist/config-schema.js
 var configMetaSchema = external_exports.object({
   version: external_exports.literal(1),
   updatedAt: external_exports.string(),
@@ -6397,6 +6772,225 @@ var PRIORITY_WEIGHTS = {
   medium: 2,
   low: 1
 };
+
+// src/issue-graph.ts
+var MISSION_BOARD_TITLE_PREFIXES = [
+  "[\uC720\uC9C0\uBCF4\uC218]",
+  "[\uB9AC\uBCA8\uB7F0\uC2F1 \uACBD\uACE0]",
+  "[\uACBD\uACE0]",
+  "[\uC9C0\uC2DC]",
+  "[\uC804\uB7B5]",
+  "[\uAE34\uAE09]"
+];
+var ISSUE_REF_PATTERN = /\b([A-Z][A-Z0-9]+-\d+)\b/g;
+var REISSUE_PATTERN = /\b([A-Z][A-Z0-9]+-\d+)\s*재이슈(?:[)\]\s]|$)/;
+var COMMENT_SPAWN_PATTERN = /(생성|이관|분리|후속|차단|연결|파생|재이슈|follow[- ]?up|spawn|handoff|linked|created)/i;
+function toNonEmptyString(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+function toDate(value) {
+  if (!value) return null;
+  const parsed = value instanceof Date ? value : new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+function extractIssuePrefix(title) {
+  const match = title.match(/^\[([^\]]+)\]/);
+  return match ? match[1].trim() : "";
+}
+function isHiddenOrCancelled(issue) {
+  return toDate(issue.hiddenAt) !== null || toDate(issue.cancelledAt) !== null;
+}
+function isSeedIssue(issue) {
+  if (isHiddenOrCancelled(issue)) return false;
+  const title = issue.title.trim();
+  const record = issue;
+  if (MISSION_BOARD_TITLE_PREFIXES.some((prefix) => title.startsWith(prefix))) return true;
+  if (toNonEmptyString(issue.executionRunId)) return true;
+  if (toNonEmptyString(record.originRunId)) return true;
+  if (toNonEmptyString(record.originKind) && toNonEmptyString(record.originKind) !== "manual") return true;
+  return false;
+}
+function issueNode(issue, topologyRole) {
+  const originKind = toNonEmptyString(issue.originKind);
+  return {
+    id: issue.id,
+    label: issue.identifier ?? issue.id.slice(0, 8),
+    kind: "issue",
+    status: issue.status,
+    role: extractIssuePrefix(issue.title) || originKind || "issue",
+    topologyRole,
+    summary: issue.title,
+    identifier: issue.identifier ?? null
+  };
+}
+function agentNode(agent) {
+  return {
+    id: agent.id,
+    label: agent.name,
+    kind: "agent",
+    status: agent.status ?? "active",
+    role: agent.role ?? "assignee",
+    summary: agent.name,
+    identifier: null
+  };
+}
+function collectRefs(...texts) {
+  const refs = /* @__PURE__ */ new Set();
+  for (const text of texts) {
+    if (!text) continue;
+    const matches = text.matchAll(ISSUE_REF_PATTERN);
+    for (const match of matches) {
+      const ref = match[1]?.trim();
+      if (ref) refs.add(ref);
+    }
+  }
+  return [...refs];
+}
+function extractReissueRef(issue) {
+  const match = issue.title.match(REISSUE_PATTERN);
+  return match?.[1]?.trim() ?? null;
+}
+function addEdge(edges, seen, source, target, label) {
+  if (!source || !target || source === target) return;
+  const key = `${source}->${target}:${label}`;
+  if (seen.has(key)) return;
+  seen.add(key);
+  edges.push({ source, target, label });
+}
+async function getComments(issueId, loadComments, cache) {
+  if (cache.has(issueId)) return cache.get(issueId) ?? [];
+  try {
+    const comments = await loadComments(issueId);
+    cache.set(issueId, comments);
+    return comments;
+  } catch {
+    cache.set(issueId, []);
+    return [];
+  }
+}
+async function buildMissionIssueGraph(input) {
+  const issueById = new Map(input.issues.map((issue) => [issue.id, issue]));
+  const issueByIdentifier = new Map(
+    input.issues.flatMap((issue) => issue.identifier ? [[issue.identifier, issue]] : [])
+  );
+  const agentById = new Map(input.agents.map((agent) => [agent.id, agent]));
+  const seedIssueIds = input.seedIssueIds && input.seedIssueIds.length > 0 ? input.seedIssueIds.filter((issueId) => issueById.has(issueId)) : input.issues.filter(isSeedIssue).map((issue) => issue.id);
+  const queue = seedIssueIds.map((issueId) => ({ issueId, depth: 0 }));
+  const visited = /* @__PURE__ */ new Set();
+  const commentsCache = /* @__PURE__ */ new Map();
+  const nodes = /* @__PURE__ */ new Map();
+  const edges = [];
+  const seenEdges = /* @__PURE__ */ new Set();
+  const maxDepth = input.maxDepth ?? 2;
+  const childrenByIssueId = /* @__PURE__ */ new Map();
+  for (const issue of input.issues) {
+    if (!issue.parentId || !issueById.has(issue.parentId)) continue;
+    const bucket = childrenByIssueId.get(issue.parentId);
+    if (bucket) {
+      bucket.push(issue.id);
+    } else {
+      childrenByIssueId.set(issue.parentId, [issue.id]);
+    }
+  }
+  while (queue.length > 0) {
+    const next = queue.shift();
+    if (!next) continue;
+    if (visited.has(next.issueId)) continue;
+    visited.add(next.issueId);
+    const issue = issueById.get(next.issueId);
+    if (!issue) continue;
+    const hasParent = Boolean(issue.parentId && issueById.has(issue.parentId));
+    const hasChildren = (childrenByIssueId.get(issue.id) ?? []).length > 0;
+    const topologyRole = hasChildren ? "parent" : hasParent ? "child" : "standalone";
+    nodes.set(issue.id, issueNode(issue, topologyRole));
+    if (issue.assigneeAgentId) {
+      const agent = agentById.get(issue.assigneeAgentId);
+      if (agent) {
+        nodes.set(agent.id, agentNode(agent));
+        addEdge(edges, seenEdges, issue.id, agent.id, "assignee");
+      }
+    }
+    const comments = next.depth <= maxDepth ? await getComments(issue.id, input.loadComments, commentsCache) : [];
+    const reissueRef = extractReissueRef(issue);
+    if (reissueRef) {
+      const original = issueByIdentifier.get(reissueRef);
+      if (original) {
+        const originalHasParent = Boolean(original.parentId && issueById.has(original.parentId));
+        const originalHasChildren = (childrenByIssueId.get(original.id) ?? []).length > 0;
+        const originalTopologyRole = originalHasChildren ? "parent" : originalHasParent ? "child" : "standalone";
+        nodes.set(original.id, issueNode(original, originalTopologyRole));
+        addEdge(edges, seenEdges, original.id, issue.id, "reissue");
+        if (!visited.has(original.id) && next.depth < maxDepth) {
+          queue.push({ issueId: original.id, depth: next.depth + 1 });
+        }
+      }
+    }
+    if (issue.parentId) {
+      const parent = issueById.get(issue.parentId);
+      if (parent) {
+        const parentHasParent = Boolean(parent.parentId && issueById.has(parent.parentId));
+        const parentHasChildren = (childrenByIssueId.get(parent.id) ?? []).length > 0;
+        const parentTopologyRole = parentHasChildren ? "parent" : parentHasParent ? "child" : "standalone";
+        nodes.set(parent.id, issueNode(parent, parentTopologyRole));
+        addEdge(edges, seenEdges, issue.id, parent.id, "parent");
+        if (!visited.has(parent.id) && next.depth < maxDepth) {
+          queue.push({ issueId: parent.id, depth: next.depth + 1 });
+        }
+      }
+    }
+    const textRefs = collectRefs(issue.title, issue.description).filter((ref) => ref !== reissueRef);
+    for (const ref of textRefs) {
+      const target = issueByIdentifier.get(ref);
+      if (!target || target.id === issue.id) continue;
+      const targetHasParent = Boolean(target.parentId && issueById.has(target.parentId));
+      const targetHasChildren = (childrenByIssueId.get(target.id) ?? []).length > 0;
+      const targetTopologyRole = targetHasChildren ? "parent" : targetHasParent ? "child" : "standalone";
+      nodes.set(target.id, issueNode(target, targetTopologyRole));
+      addEdge(edges, seenEdges, issue.id, target.id, "related");
+      if (!visited.has(target.id) && next.depth < maxDepth) {
+        queue.push({ issueId: target.id, depth: next.depth + 1 });
+      }
+    }
+    for (const comment of comments) {
+      const commentRefs = collectRefs(comment.body);
+      const commentSpawn = COMMENT_SPAWN_PATTERN.test(comment.body);
+      for (const ref of commentRefs) {
+        const target = issueByIdentifier.get(ref);
+        if (!target || target.id === issue.id) continue;
+        const targetHasParent = Boolean(target.parentId && issueById.has(target.parentId));
+        const targetHasChildren = (childrenByIssueId.get(target.id) ?? []).length > 0;
+        const targetTopologyRole = targetHasChildren ? "parent" : targetHasParent ? "child" : "standalone";
+        nodes.set(target.id, issueNode(target, targetTopologyRole));
+        addEdge(edges, seenEdges, issue.id, target.id, commentSpawn ? "spawned_followup" : "related");
+        if (!visited.has(target.id) && next.depth < maxDepth) {
+          queue.push({ issueId: target.id, depth: next.depth + 1 });
+        }
+      }
+    }
+    const childIds = childrenByIssueId.get(issue.id) ?? [];
+    for (const childId of childIds) {
+      if (!visited.has(childId) && next.depth < maxDepth) {
+        queue.push({ issueId: childId, depth: next.depth + 1 });
+      }
+    }
+  }
+  const orderedNodes = [...nodes.values()].sort((left, right) => {
+    if (left.kind !== right.kind) return left.kind === "issue" ? -1 : 1;
+    const leftIssue = issueById.get(left.id);
+    const rightIssue = issueById.get(right.id);
+    const leftTime = toDate(leftIssue?.updatedAt)?.getTime() ?? 0;
+    const rightTime = toDate(rightIssue?.updatedAt)?.getTime() ?? 0;
+    if (leftTime !== rightTime) return rightTime - leftTime;
+    return left.label.localeCompare(right.label);
+  });
+  return {
+    graph: {
+      nodes: orderedNodes,
+      edges
+    },
+    seedIssueIds
+  };
+}
 
 // src/worker.ts
 var OPEN_STATUSES = /* @__PURE__ */ new Set(["backlog", "todo", "in_progress", "in_review", "blocked"]);
@@ -6600,6 +7194,101 @@ function missionTitle(rootIssue, missionId, taskCards) {
   }
   return `Mission ${missionId.slice(0, 8)}`;
 }
+function buildColumnsFromMissions(missions) {
+  const columnsByName = /* @__PURE__ */ new Map();
+  for (const mission of missions) {
+    const key = mission.columnName || COLUMN_UNASSIGNED;
+    const bucket = columnsByName.get(key);
+    if (bucket) {
+      bucket.push(mission);
+    } else {
+      columnsByName.set(key, [mission]);
+    }
+  }
+  return Array.from(columnsByName.entries()).map(([name, missionCards]) => ({
+    key: name,
+    name,
+    missionCount: missionCards.length,
+    missions: [...missionCards].sort((left, right) => {
+      const overdueDiff = (right.buckets.find((bucket) => bucket.key === "delayed")?.count ?? 0) - (left.buckets.find((bucket) => bucket.key === "delayed")?.count ?? 0);
+      if (overdueDiff !== 0) return overdueDiff;
+      const inProgressDiff = (right.buckets.find((bucket) => bucket.key === "inProgress")?.count ?? 0) - (left.buckets.find((bucket) => bucket.key === "inProgress")?.count ?? 0);
+      if (inProgressDiff !== 0) return inProgressDiff;
+      return left.title.localeCompare(right.title);
+    })
+  })).sort((left, right) => {
+    if (left.name === COLUMN_UNASSIGNED) return 1;
+    if (right.name === COLUMN_UNASSIGNED) return -1;
+    return left.name.localeCompare(right.name);
+  });
+}
+function deriveSpawnGraph(graph) {
+  const nodeById = new Map(graph.graph.nodes.map((node) => [node.id, node]));
+  const seedIssueIds = graph.seedIssueIds.filter((issueId) => nodeById.has(issueId));
+  const issueReachable = new Set(seedIssueIds);
+  const queue = [...seedIssueIds];
+  const issueIds = new Set(
+    graph.graph.nodes.filter((node) => node.kind === "issue").map((node) => node.id)
+  );
+  const normalizedEdges = [];
+  const adjacency = /* @__PURE__ */ new Map();
+  const seenEdges = /* @__PURE__ */ new Set();
+  for (const edge of graph.graph.edges) {
+    if (edge.label !== "parent" && edge.label !== "reissue" && edge.label !== "spawned_followup") continue;
+    const source = edge.label === "parent" ? edge.target : edge.source;
+    const target = edge.label === "parent" ? edge.source : edge.target;
+    const label = edge.label === "parent" ? "child" : edge.label;
+    if (!issueIds.has(source) || !issueIds.has(target)) continue;
+    const key = `${source}->${target}:${label}`;
+    if (seenEdges.has(key)) continue;
+    seenEdges.add(key);
+    normalizedEdges.push({ source, target, label });
+    const bucket = adjacency.get(source);
+    if (bucket) bucket.push(target);
+    else adjacency.set(source, [target]);
+  }
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current) continue;
+    const nextIds = adjacency.get(current) ?? [];
+    for (const nextId of nextIds) {
+      if (issueReachable.has(nextId)) continue;
+      issueReachable.add(nextId);
+      queue.push(nextId);
+    }
+  }
+  const reachableNodes = /* @__PURE__ */ new Map();
+  const reachableIssueIds = new Set(
+    [...issueReachable].filter((issueId) => issueIds.has(issueId))
+  );
+  for (const node of graph.graph.nodes) {
+    if (node.kind === "issue" && reachableIssueIds.has(node.id)) {
+      reachableNodes.set(node.id, node);
+    }
+  }
+  for (const edge of graph.graph.edges) {
+    if (edge.label !== "assignee") continue;
+    if (!reachableIssueIds.has(edge.source)) continue;
+    const agent = nodeById.get(edge.target);
+    if (!agent || agent.kind !== "agent") continue;
+    reachableNodes.set(agent.id, agent);
+  }
+  const assigneeEdges = graph.graph.edges.filter((edge) => edge.label === "assignee" && reachableNodes.has(edge.source) && reachableNodes.has(edge.target));
+  const reachableEdges = [...normalizedEdges, ...assigneeEdges].filter((edge) => {
+    return reachableNodes.has(edge.source) && reachableNodes.has(edge.target);
+  });
+  const orderedNodes = [...reachableNodes.values()].sort((left, right) => {
+    if (left.kind !== right.kind) return left.kind === "issue" ? -1 : 1;
+    return left.label.localeCompare(right.label);
+  });
+  return {
+    seedIssueIds,
+    graph: {
+      nodes: orderedNodes,
+      edges: reachableEdges
+    }
+  };
+}
 function buildWorkBoardSnapshot(issues, options) {
   const now = options.now ?? /* @__PURE__ */ new Date();
   const weekStart = startOfWeekKst(now);
@@ -6663,32 +7352,7 @@ function buildWorkBoardSnapshot(issues, options) {
       updatedAt: toIsoString(rootIssue?.updatedAt ?? taskCards[0]?.updatedAt ?? null)
     });
   }
-  const columnsByName = /* @__PURE__ */ new Map();
-  for (const mission of missions) {
-    const key = mission.columnName || COLUMN_UNASSIGNED;
-    const bucket = columnsByName.get(key);
-    if (bucket) {
-      bucket.push(mission);
-    } else {
-      columnsByName.set(key, [mission]);
-    }
-  }
-  const columns = Array.from(columnsByName.entries()).map(([name, missionCards]) => ({
-    key: name,
-    name,
-    missionCount: missionCards.length,
-    missions: [...missionCards].sort((left, right) => {
-      const overdueDiff = (right.buckets.find((bucket) => bucket.key === "delayed")?.count ?? 0) - (left.buckets.find((bucket) => bucket.key === "delayed")?.count ?? 0);
-      if (overdueDiff !== 0) return overdueDiff;
-      const inProgressDiff = (right.buckets.find((bucket) => bucket.key === "inProgress")?.count ?? 0) - (left.buckets.find((bucket) => bucket.key === "inProgress")?.count ?? 0);
-      if (inProgressDiff !== 0) return inProgressDiff;
-      return left.title.localeCompare(right.title);
-    })
-  })).sort((left, right) => {
-    if (left.name === COLUMN_UNASSIGNED) return 1;
-    if (right.name === COLUMN_UNASSIGNED) return -1;
-    return left.name.localeCompare(right.name);
-  });
+  const columns = buildColumnsFromMissions(missions);
   const totals = {
     missions: missions.length,
     tasks: 0,
@@ -6706,6 +7370,35 @@ function buildWorkBoardSnapshot(issues, options) {
       if (bucket.key === "delayed") totals.overdue += bucket.count;
     }
   }
+  const projects = options.projects ?? [];
+  const projectNameById = new Map(
+    projects.map((project) => [project.id, project.name])
+  );
+  const DEFAULT_PROJECT_NAME = "\uAE30\uBCF8";
+  const missionsByProjectId = /* @__PURE__ */ new Map();
+  for (const mission of missions) {
+    const rootIssue = issueById.get(mission.missionId) ?? null;
+    const projectId = asString(rootIssue?.projectId) || null;
+    const bucket = missionsByProjectId.get(projectId);
+    if (bucket) {
+      bucket.push(mission);
+    } else {
+      missionsByProjectId.set(projectId, [mission]);
+    }
+  }
+  const projectGroups = [];
+  for (const [projectId, projectMissions] of missionsByProjectId.entries()) {
+    projectGroups.push({
+      projectId,
+      projectName: projectId ? projectNameById.get(projectId) ?? projectId.slice(0, 8) : DEFAULT_PROJECT_NAME,
+      columns: buildColumnsFromMissions(projectMissions)
+    });
+  }
+  projectGroups.sort((left, right) => {
+    if (left.projectId === null) return 1;
+    if (right.projectId === null) return -1;
+    return left.projectName.localeCompare(right.projectName);
+  });
   return {
     companyId: options.companyId,
     generatedAt: now.toISOString(),
@@ -6715,12 +7408,113 @@ function buildWorkBoardSnapshot(issues, options) {
       label: formatWeekRangeLabel(weekStart, weekEnd)
     },
     totals,
-    columns
+    columns,
+    missionGraph: options.missionGraph ?? { graph: { nodes: [], edges: [] }, seedIssueIds: [] },
+    spawnGraph: options.spawnGraph,
+    projectGroups
   };
 }
+async function listAllAgents(ctx, companyId) {
+  const apiUrl = process.env.PAPERCLIP_API_URL || "http://localhost:3100";
+  const limit = 250;
+  const items = [];
+  try {
+    for (let offset = 0; ; offset += limit) {
+      const res = await fetch(
+        `${apiUrl}/api/companies/${companyId}/agents?limit=${limit}&offset=${offset}`
+      );
+      if (!res.ok) break;
+      const batch = await res.json();
+      const mapped = batch.map((agent) => ({
+        id: asString(agent.id),
+        name: asString(agent.name),
+        status: asString(agent.status),
+        role: asString(agent.role)
+      })).filter((agent) => Boolean(agent.id));
+      items.push(...mapped);
+      if (batch.length < limit) break;
+    }
+  } catch {
+    const limit2 = 250;
+    const items2 = [];
+    for (let offset = 0; ; offset += limit2) {
+      const batch = await ctx.agents.list({ companyId, limit: limit2, offset });
+      items2.push(
+        ...batch.map((agent) => ({
+          id: agent.id,
+          name: agent.name,
+          status: agent.status,
+          role: agent.role
+        }))
+      );
+      if (batch.length < limit2) break;
+    }
+    return items2;
+  }
+  return items;
+}
+async function listAllIssues(ctx, companyId) {
+  const limit = 250;
+  const items = [];
+  for (let offset = 0; ; offset += limit) {
+    const batch = await ctx.issues.list({ companyId, limit, offset });
+    items.push(...batch);
+    if (batch.length < limit) break;
+  }
+  return items;
+}
+async function listIssueComments(ctx, companyId, issueId) {
+  const apiUrl = process.env.PAPERCLIP_API_URL || "http://localhost:3100";
+  try {
+    const res = await fetch(`${apiUrl}/api/issues/${issueId}/comments?limit=200`);
+    if (!res.ok) return [];
+    const comments = await res.json();
+    return comments.filter((comment) => asString(comment.companyId) === companyId).map((comment) => ({
+      body: asString(comment.body)
+    }));
+  } catch {
+    try {
+      const comments = await ctx.issues.listComments(issueId, companyId);
+      return comments.map((comment) => ({ body: asString(comment.body) }));
+    } catch {
+      return [];
+    }
+  }
+}
 async function loadBoardSnapshot(ctx, companyId) {
-  const issues = await ctx.issues.list({ companyId, limit: 500, offset: 0 });
-  return buildWorkBoardSnapshot(issues, { companyId });
+  let projects = [];
+  try {
+    const apiUrl = process.env.PAPERCLIP_API_URL || "http://localhost:3100";
+    const res = await fetch(`${apiUrl}/api/companies/${companyId}/projects?limit=200`);
+    if (res.ok) {
+      const raw = await res.json();
+      projects = raw.map((project) => ({
+        id: asString(project.id),
+        name: asString(project.name)
+      })).filter((project) => Boolean(project.id));
+    }
+  } catch {
+  }
+  const [agents, issues] = await Promise.all([
+    listAllAgents(ctx, companyId),
+    listAllIssues(ctx, companyId)
+  ]);
+  const baseSnapshot = buildWorkBoardSnapshot(issues, { companyId, projects });
+  const currentMissionSeedIds = Array.from(
+    new Set(baseSnapshot.columns.flatMap((column) => column.missions.map((mission) => mission.missionId)))
+  );
+  const missionGraph = await buildMissionIssueGraph({
+    issues,
+    agents,
+    loadComments: async (issueId) => await listIssueComments(ctx, companyId, issueId),
+    seedIssueIds: currentMissionSeedIds
+  });
+  return buildWorkBoardSnapshot(issues, {
+    companyId,
+    projects,
+    missionGraph,
+    spawnGraph: deriveSpawnGraph(missionGraph)
+  });
 }
 var plugin = definePlugin({
   async setup(ctx) {
@@ -6743,7 +7537,10 @@ var plugin = definePlugin({
             todo: 0,
             overdue: 0
           },
-          columns: []
+          columns: [],
+          missionGraph: { graph: { nodes: [], edges: [] }, seedIssueIds: [] },
+          spawnGraph: { graph: { nodes: [], edges: [] }, seedIssueIds: [] },
+          projectGroups: []
         };
       }
       return await loadBoardSnapshot(ctx, companyId);

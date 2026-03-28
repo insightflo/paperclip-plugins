@@ -30,6 +30,7 @@ export interface WorkflowRun extends Record<string, unknown> {
   status: "running" | "completed" | "failed" | "aborted" | "timed-out";
   parentIssueId?: string;
   runLabel?: string;
+  triggerSource?: "schedule" | "manual" | "label" | "api";
   startedAt: string;
   completedAt?: string;
 }
@@ -144,6 +145,33 @@ async function requireEntityByType<T>(
   }
 
   return record;
+}
+
+async function listAllCompanyStepRuns(
+  ctx: PluginContext,
+  companyId: string,
+): Promise<PluginEntityRecord[]> {
+  const pageSize = 200;
+  const stepRuns: PluginEntityRecord[] = [];
+  let offset = 0;
+
+  while (true) {
+    const page = await ctx.entities.list({
+      entityType: ENTITY_TYPES.workflowStepRun,
+      scopeKind: "company",
+      scopeId: companyId,
+      limit: pageSize,
+      offset,
+    });
+
+    stepRuns.push(...page);
+
+    if (page.length < pageSize) {
+      return stepRuns;
+    }
+
+    offset += page.length;
+  }
 }
 
 export async function createWorkflowDefinition(
@@ -315,11 +343,7 @@ export async function listStepRuns(
   runId: string,
   companyId: string,
 ): Promise<PluginEntityRecord[]> {
-  const stepRuns = await ctx.entities.list({
-    entityType: ENTITY_TYPES.workflowStepRun,
-    scopeKind: "company",
-    scopeId: companyId,
-  });
+  const stepRuns = await listAllCompanyStepRuns(ctx, companyId);
 
   return stepRuns.filter(
     (stepRun: PluginEntityRecord) =>
@@ -332,11 +356,7 @@ export async function findStepRunByIssueId(
   issueId: string,
   companyId: string,
 ): Promise<PluginEntityRecord | null> {
-  const stepRuns = await ctx.entities.list({
-    entityType: ENTITY_TYPES.workflowStepRun,
-    scopeKind: "company",
-    scopeId: companyId,
-  });
+  const stepRuns = await listAllCompanyStepRuns(ctx, companyId);
 
   return (
     stepRuns.find(

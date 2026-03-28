@@ -4,6 +4,9 @@ import { getEscalationTarget, getNextSteps, getRetryInfo, } from "./dag-engine.j
 import { checkIdempotency, createWorkflowDefinition, createWorkflowRun, listWorkflowRunsByWorkflowId, updateWorkflowDefinition, createStepRun, findStepRunByIssueId, getStepRun, getWorkflowDefinition, getWorkflowRun, listActiveRuns, listStepRuns, listWorkflowDefinitions, markIdempotency, updateStepRun, updateWorkflowRun, } from "./workflow-store.js";
 import { TERMINAL_STEP_STATUSES, findStepDefinition, getStepAgentName, getStepAgentNameHint, toWorkflowDefinitionRecord, toWorkflowRunRecord, toWorkflowStepRunRecord, } from "./workflow-utils.js";
 import { checkDailyRunGuard } from "./run-guards.js";
+import { ensureIssueLabels } from "./issue-labels.js";
+import { autoCompleteWorkflowStepIssue, syncWorkflowStepIssueStatus, syncWorkflowStepIssueStatusFromStepRun, } from "./run-event-utils.js";
+const OPEN_ISSUE_STATUSES = new Set(["backlog", "todo", "in_progress", "in_review", "blocked"]);
 function resolveTemplateVars(template, vars) {
     return template.replace(/\{\$(\w+)\}/g, (_, key) => vars[key] ?? `{$${key}}`);
 }
@@ -63,15 +66,72 @@ function parseOptionalTrimmedString(value) {
 }
 async function createIssueWithLabels(ctx, input, labelIds) {
     const issue = await ctx.issues.create(input);
-    if (labelIds && labelIds.length > 0) {
-        try {
-            await ctx.issues.update(issue.id, { labelIds }, input.companyId);
+    await ensureIssueLabels(ctx, issue.id, input.companyId, labelIds);
+    return issue;
+}
+function sortIssuesByCreatedAt(issues) {
+    return [...issues].sort((left, right) => {
+        const leftMs = Date.parse(String(left.createdAt ?? ""));
+        const rightMs = Date.parse(String(right.createdAt ?? ""));
+        if (!Number.isFinite(leftMs) && !Number.isFinite(rightMs))
+            return 0;
+        if (!Number.isFinite(leftMs))
+            return 1;
+        if (!Number.isFinite(rightMs))
+            return -1;
+        return leftMs - rightMs;
+    });
+}
+async function listCompanyIssues(ctx, companyId, status) {
+    const pageSize = 200;
+    let offset = 0;
+    const issues = [];
+    while (true) {
+        const page = await ctx.issues.list({
+            companyId,
+            limit: pageSize,
+            offset,
+            status,
+        });
+        issues.push(...page);
+        if (page.length < pageSize) {
+            break;
         }
-        catch (e) {
-            ctx.logger.warn("Failed to attach labelIds to issue", { issueId: issue.id, labelIds, error: String(e) });
+        offset += page.length;
+    }
+    return issues;
+}
+async function findDuplicateStepIssues(ctx, companyId, title, parentIssueId) {
+    if (!parentIssueId) {
+        return [];
+    }
+    const issues = await listCompanyIssues(ctx, companyId);
+    return sortIssuesByCreatedAt(issues.filter((issue) => issue.parentId === parentIssueId &&
+        issue.title === title &&
+        OPEN_ISSUE_STATUSES.has(String(issue.status ?? ""))));
+}
+async function reconcileDuplicateStepIssues(ctx, companyId, title, parentIssueId) {
+    const duplicates = await findDuplicateStepIssues(ctx, companyId, title, parentIssueId);
+    if (duplicates.length === 0) {
+        return null;
+    }
+    const canonical = duplicates[0] ?? null;
+    for (const duplicate of duplicates.slice(1)) {
+        try {
+            await ctx.issues.update(duplicate.id, { status: "cancelled" }, companyId);
+            await ctx.issues.createComment(duplicate.id, `Cancelled as duplicate of issue ${canonical?.id ?? ""} for workflow step "${title}".`, companyId);
+        }
+        catch (error) {
+            ctx.logger.warn("Failed to cancel duplicate workflow step issue", {
+                companyId,
+                duplicateIssueId: duplicate.id,
+                error: summarizeError(error),
+                parentIssueId,
+                title,
+            });
         }
     }
-    return issue;
+    return canonical;
 }
 function buildIdempotencyKey(event) {
     return `${event.eventType}:${event.eventId}`;
@@ -310,6 +370,7 @@ async function activateBacklogStep(ctx, stepRunRecord, stepDef, workflowName, co
     const resolvedAgent = isToolStep
         ? { agentId: null, agentName: "system" }
         : await resolveStepAgent(ctx, companyId, stepDef, stepRunRecord.data.agentName);
+    const issueTitle = `[${workflowName}] ${resolveTemplateVars(stepDef.title, options?.templateVars ?? {})}`;
     let issueId = typeof stepRunRecord.data.issueId === "string" && stepRunRecord.data.issueId.trim()
         ? stepRunRecord.data.issueId.trim()
         : "";
@@ -321,7 +382,36 @@ async function activateBacklogStep(ctx, stepRunRecord, stepDef, workflowName, co
         ? await fetchToolInstructions(ctx, stepDef.tools, companyId)
         : "";
     const fullDescription = [stepDescription, depOutputs, toolInstructions].filter(Boolean).join("\n\n");
+    let stepIssue = null;
     if (!issueId) {
+        stepIssue = await reconcileDuplicateStepIssues(ctx, companyId, issueTitle, options?.parentIssueId);
+        if (!stepIssue) {
+            stepIssue = await createIssueWithLabels(ctx, {
+                assigneeAgentId: resolvedAgent.agentId ?? undefined,
+                companyId,
+                description: fullDescription,
+                parentId: options?.parentIssueId,
+                goalId: options?.goalId || undefined,
+                projectId: options?.projectId || undefined,
+                title: issueTitle,
+            }, options?.labelIds);
+            await ctx.issues.update(stepIssue.id, { status: "todo" }, companyId);
+        }
+        const canonicalIssue = await reconcileDuplicateStepIssues(ctx, companyId, issueTitle, options?.parentIssueId);
+        if (canonicalIssue) {
+            stepIssue = canonicalIssue;
+        }
+        issueId = stepIssue.id;
+    }
+    else {
+        try {
+            stepIssue = await ctx.issues.get(issueId, companyId);
+        }
+        catch {
+            stepIssue = null;
+        }
+    }
+    if (!stepIssue) {
         const issue = await createIssueWithLabels(ctx, {
             assigneeAgentId: resolvedAgent.agentId ?? undefined,
             companyId,
@@ -329,11 +419,13 @@ async function activateBacklogStep(ctx, stepRunRecord, stepDef, workflowName, co
             parentId: options?.parentIssueId,
             goalId: options?.goalId || undefined,
             projectId: options?.projectId || undefined,
-            title: `[${workflowName}] ${resolveTemplateVars(stepDef.title, options?.templateVars ?? {})}`,
+            title: issueTitle,
         }, options?.labelIds);
         await ctx.issues.update(issue.id, { status: "todo" }, companyId);
+        stepIssue = issue;
         issueId = issue.id;
     }
+    await ensureIssueLabels(ctx, issueId, companyId, options?.labelIds);
     const nextStartedAt = stepRunRecord.data.startedAt ?? new Date().toISOString();
     let updatedStepRun = toWorkflowStepRunRecord(await updateStepRun(ctx, stepRunRecord.id, {
         agentName: resolvedAgent.agentName ?? stepRunRecord.data.agentName,
@@ -393,6 +485,9 @@ async function startWorkflow(ctx, workflowId, companyId, options) {
             title: `[${typedWorkflowDefinition.data.name}] ${runLabel}`,
         }, typedWorkflowDefinition.data.labelIds);
         parentIssueId = parentIssue.id;
+    }
+    if (parentIssueId) {
+        await ensureIssueLabels(ctx, parentIssueId, companyId, typedWorkflowDefinition.data.labelIds);
     }
     const workflowRun = toWorkflowRunRecord(await createWorkflowRun(ctx, {
         companyId,
@@ -596,6 +691,9 @@ async function activateEscalationStep(ctx, workflowRun, workflowDefinition, sour
             issueId: issue.id,
         }));
     }
+    if (escalationStepRun.data.issueId) {
+        await ensureIssueLabels(ctx, escalationStepRun.data.issueId, companyId, workflowDefinition.data.labelIds);
+    }
     const shouldActivate = escalationStepRun.data.status === STEP_STATUSES.backlog;
     if (shouldActivate) {
         escalationStepRun = toWorkflowStepRunRecord(await updateStepRun(ctx, escalationStepRun.id, {
@@ -687,6 +785,7 @@ async function handleStepFailureEvent(ctx, event, options) {
             completedAt: new Date().toISOString(),
             status: STEP_STATUSES.skipped,
         }));
+        await syncWorkflowStepIssueStatus(ctx, event, "done");
         await advanceWorkflow(ctx, skippedStepRun, event.companyId);
         await markIdempotency(ctx, idempotencyKey, event.companyId);
         ctx.logger.info("Skipped workflow step after agent run failure", {
@@ -705,6 +804,14 @@ async function handleStepFailureEvent(ctx, event, options) {
         await updateWorkflowRun(ctx, typedWorkflowRun.id, {
             completedAt: typedWorkflowRun.data.completedAt ?? new Date().toISOString(),
             status: RUN_STATUSES.aborted,
+        });
+        await syncWorkflowStepIssueStatus(ctx, event, event.eventType === "agent.run.cancelled" ? "cancelled" : "blocked", {
+            comment: [
+                "### Workflow step status updated by workflow engine",
+                "",
+                `The agent run ${event.eventType === "agent.run.cancelled" ? "was cancelled" : "failed"} for this step.`,
+                "The workflow engine marked this issue terminal so the workflow does not hang on an open task.",
+            ].join("\n"),
         });
         await markIdempotency(ctx, idempotencyKey, event.companyId);
         ctx.logger.warn("Aborted workflow after agent run failure", {
@@ -740,6 +847,14 @@ async function handleStepFailureEvent(ctx, event, options) {
             status: STEP_STATUSES.escalated,
         }));
         await activateEscalationStep(ctx, typedWorkflowRun, typedWorkflowDefinition, escalatedStepRun, escalationTargetId, event.companyId);
+        await syncWorkflowStepIssueStatus(ctx, event, "blocked", {
+            comment: [
+                "### Workflow step status updated by workflow engine",
+                "",
+                "This step was escalated to a downstream workflow step.",
+                "The original issue is now blocked to reflect the handoff.",
+            ].join("\n"),
+        });
         await markIdempotency(ctx, idempotencyKey, event.companyId);
         ctx.logger.warn("Escalated workflow step after agent run failure", {
             companyId: event.companyId,
@@ -757,6 +872,14 @@ async function handleStepFailureEvent(ctx, event, options) {
     await updateWorkflowRun(ctx, typedWorkflowRun.id, {
         completedAt: typedWorkflowRun.data.completedAt ?? new Date().toISOString(),
         status: RUN_STATUSES.failed,
+    });
+    await syncWorkflowStepIssueStatus(ctx, event, event.eventType === "agent.run.cancelled" ? "cancelled" : "blocked", {
+        comment: [
+            "### Workflow step status updated by workflow engine",
+            "",
+            `The agent run ${event.eventType === "agent.run.cancelled" ? "was cancelled" : "failed"} and the step has no recovery policy.`,
+            "The issue was marked terminal so the workflow can surface the blocker explicitly.",
+        ].join("\n"),
     });
     await markIdempotency(ctx, idempotencyKey, event.companyId);
     ctx.logger.warn("Workflow step failed without recovery policy", {
@@ -822,7 +945,7 @@ const plugin = definePlugin({
                 const payload = event.payload;
                 const issueStatus = typeof payload.status === "string" ? payload.status : undefined;
                 let nextStepStatus = null;
-                if (issueStatus === "done") {
+                if (issueStatus === "done" || issueStatus === "in_review") {
                     nextStepStatus = STEP_STATUSES.done;
                 }
                 else if (issueStatus === "in_progress") {
@@ -990,6 +1113,32 @@ const plugin = definePlugin({
                 });
             }
         });
+        ctx.events.on("agent.run.finished", async (event) => {
+            try {
+                const idempotencyKey = buildIdempotencyKey(event);
+                if (await checkIdempotency(ctx, idempotencyKey, event.companyId)) {
+                    return;
+                }
+                const result = await autoCompleteWorkflowStepIssue(ctx, event);
+                if (result.completed) {
+                    ctx.logger.info("Auto-completed workflow step issue from finished agent run", {
+                        companyId: event.companyId,
+                        issueId: result.issueId,
+                        stepId: result.stepId,
+                    });
+                }
+                if (result.completed || (result.reason !== "issue not found" && result.reason !== "missing issueId")) {
+                    await markIdempotency(ctx, idempotencyKey, event.companyId);
+                }
+            }
+            catch (error) {
+                ctx.logger.warn("Failed to handle agent.run.finished event", {
+                    companyId: event.companyId,
+                    error: summarizeError(error),
+                    eventId: event.eventId,
+                });
+            }
+        });
         ctx.events.on("plugin.insightflo.tool-registry.tool-execution-result", async (event) => {
             try {
                 const payload = event.payload;
@@ -1022,6 +1171,14 @@ const plugin = definePlugin({
                     toolName,
                 });
                 if (success) {
+                    const issueSyncResult = await syncWorkflowStepIssueStatusFromStepRun(ctx, updatedStepRun, event.companyId, "done");
+                    if (issueSyncResult.completed) {
+                        ctx.logger.info("Auto-completed workflow step issue from tool execution result", {
+                            companyId: event.companyId,
+                            issueId: issueSyncResult.issueId,
+                            stepId: issueSyncResult.stepId,
+                        });
+                    }
                     await advanceWorkflow(ctx, updatedStepRun, event.companyId);
                 }
                 else {

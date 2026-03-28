@@ -1,14 +1,7 @@
 node_modules/
-dist/
-!plugins/**/dist/
-!plugins/**/dist/**
 *.log
 .DS_Store
 .env
 __pycache__/
 *.pyc
 .understand-anything/
-tmp/
-tmp-issues.json
-logs/
-qa-artifacts/

@@ -57,6 +57,25 @@ async function requireEntityByType(ctx, id, entityType, label) {
     }
     return record;
 }
+async function listAllCompanyStepRuns(ctx, companyId) {
+    const pageSize = 200;
+    const stepRuns = [];
+    let offset = 0;
+    while (true) {
+        const page = await ctx.entities.list({
+            entityType: ENTITY_TYPES.workflowStepRun,
+            scopeKind: "company",
+            scopeId: companyId,
+            limit: pageSize,
+            offset,
+        });
+        stepRuns.push(...page);
+        if (page.length < pageSize) {
+            return stepRuns;
+        }
+        offset += page.length;
+    }
+}
 export async function createWorkflowDefinition(ctx, def) {
     return await ctx.entities.upsert({
         entityType: ENTITY_TYPES.workflowDefinition,
@@ -149,19 +168,11 @@ export async function getStepRun(ctx, id) {
     return await getEntityByType(ctx, id, ENTITY_TYPES.workflowStepRun);
 }
 export async function listStepRuns(ctx, runId, companyId) {
-    const stepRuns = await ctx.entities.list({
-        entityType: ENTITY_TYPES.workflowStepRun,
-        scopeKind: "company",
-        scopeId: companyId,
-    });
+    const stepRuns = await listAllCompanyStepRuns(ctx, companyId);
     return stepRuns.filter((stepRun) => stepRun.data.runId === runId);
 }
 export async function findStepRunByIssueId(ctx, issueId, companyId) {
-    const stepRuns = await ctx.entities.list({
-        entityType: ENTITY_TYPES.workflowStepRun,
-        scopeKind: "company",
-        scopeId: companyId,
-    });
+    const stepRuns = await listAllCompanyStepRuns(ctx, companyId);
     return (stepRuns.find((stepRun) => stepRun.data.issueId === issueId) ?? null);
 }
 export async function updateStepRun(ctx, id, updates) {

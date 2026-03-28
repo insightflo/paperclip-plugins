@@ -1,7 +1,8 @@
 import { usePluginData, type PluginPageProps, type PluginSidebarProps, type PluginWidgetProps } from "@paperclipai/plugin-sdk/ui";
 import { useState, type CSSProperties } from "react";
 import { COLUMN_UNASSIGNED, PAGE_ROUTE } from "../constants.js";
-import type { BoardIssueCard, MissionCard, WorkBoardSnapshot } from "../worker.js";
+import type { BoardIssueCard, MissionCard, ProjectGroupData, WorkBoardSnapshot } from "../worker.js";
+import { MissionGraphPanel } from "../mission-graph-panel.js";
 
 const pageStyle: CSSProperties = {
   display: "grid",
@@ -52,6 +53,7 @@ const columnStyle: CSSProperties = {
   border: "1px solid color-mix(in srgb, var(--border, #d4d4d8) 78%, transparent)",
   background: "color-mix(in srgb, var(--card, #ffffff) 96%, transparent)",
   boxShadow: "0 18px 48px rgba(15, 23, 42, 0.05)",
+  maxWidth: "calc(50% - 9px)",
 };
 
 const missionCardStyle: CSSProperties = {
@@ -351,6 +353,77 @@ function ColumnPanel({
   );
 }
 
+const projectGroupStyle: CSSProperties = {
+  display: "grid",
+  gap: "18px",
+};
+
+const projectHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: "12px",
+  width: "100%",
+  border: "none",
+  padding: "16px 20px",
+  borderRadius: "18px",
+  background: "linear-gradient(135deg, color-mix(in srgb, var(--accent, #7dd3fc) 14%, transparent), color-mix(in srgb, var(--card, #ffffff) 96%, transparent))",
+  borderBottom: "2px solid color-mix(in srgb, var(--accent, #7dd3fc) 36%, transparent)",
+  cursor: "pointer",
+  textAlign: "left" as const,
+  color: "inherit",
+};
+
+function ProjectGroupPanel({
+  group,
+  companyPrefix,
+  defaultExpanded,
+}: {
+  group: ProjectGroupData;
+  companyPrefix: string | null | undefined;
+  defaultExpanded?: boolean;
+}) {
+  const [expanded, setExpanded] = useState(defaultExpanded ?? true);
+  const totalMissions = group.columns.reduce((sum, col) => sum + col.missionCount, 0);
+  const totalTasks = group.columns.reduce(
+    (sum, col) => sum + col.missions.reduce(
+      (mSum, m) => mSum + m.buckets.reduce((bSum, b) => bSum + b.count, 0), 0,
+    ), 0,
+  );
+
+  return (
+    <section style={projectGroupStyle}>
+      <button type="button" style={projectHeaderStyle} onClick={() => setExpanded((v) => !v)}>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <span aria-hidden="true" style={{ fontSize: "14px", opacity: 0.5 }}>{expanded ? "▾" : "▸"}</span>
+          <strong style={{ fontSize: "20px", letterSpacing: "-0.01em" }}>{group.projectName}</strong>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <span style={{ ...tinyMutedStyle, padding: "4px 10px", borderRadius: "999px", background: "color-mix(in srgb, var(--accent, #7dd3fc) 18%, transparent)" }}>
+            {totalMissions} 미션
+          </span>
+          <span style={{ ...tinyMutedStyle, padding: "4px 10px", borderRadius: "999px", background: "color-mix(in srgb, var(--muted, #e5e7eb) 52%, transparent)" }}>
+            {totalTasks} 태스크
+          </span>
+        </div>
+      </button>
+
+      {expanded ? (
+        <>
+          <section style={boardGridStyle}>
+            {group.columns.filter((c) => c.key !== COLUMN_UNASSIGNED).map((column) => (
+              <ColumnPanel key={column.key} name={column.name} missions={column.missions} companyPrefix={companyPrefix} />
+            ))}
+          </section>
+          {group.columns.filter((c) => c.key === COLUMN_UNASSIGNED).map((column) => (
+            <ColumnPanel key={column.key} name={column.name} missions={column.missions} companyPrefix={companyPrefix} isUnassigned />
+          ))}
+        </>
+      ) : null}
+    </section>
+  );
+}
+
 function BoardContent({
   context,
   data,
@@ -391,6 +464,7 @@ function BoardContent({
           </div>
           <div style={{ fontSize: "15px", lineHeight: 1.6, maxWidth: "760px" }}>
             parent issue를 미션으로 보고 하위 이슈를 그룹화합니다. 하위 라벨이 없으면 부모 라벨을 상속해 칼럼에 배치합니다.
+            미션 그래프는 제목 prefix, 댓글, 재이슈, 상위 관계를 규칙 기반으로 묶어 보여줍니다.
           </div>
         </div>
 
@@ -402,6 +476,8 @@ function BoardContent({
         </div>
       </section>
 
+      <MissionGraphPanel graph={data} companyPrefix={context.companyPrefix} />
+
       <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "center", flexWrap: "wrap" }}>
         <div style={tinyMutedStyle}>{data.weekRange.label}</div>
         <a href={pluginPagePath(context.companyPrefix)} style={{ ...anchorResetStyle, ...tinyMutedStyle }}>
@@ -409,15 +485,27 @@ function BoardContent({
         </a>
       </div>
 
-      <section style={boardGridStyle}>
-        {data.columns.filter((c) => c.key !== COLUMN_UNASSIGNED).map((column) => (
-          <ColumnPanel key={column.key} name={column.name} missions={column.missions} companyPrefix={context.companyPrefix} />
-        ))}
-      </section>
-
-      {data.columns.filter((c) => c.key === COLUMN_UNASSIGNED).map((column) => (
-        <ColumnPanel key={column.key} name={column.name} missions={column.missions} companyPrefix={context.companyPrefix} isUnassigned />
-      ))}
+      {data.projectGroups && data.projectGroups.length > 0 ? (
+        data.projectGroups.map((group) => (
+          <ProjectGroupPanel
+            key={group.projectId ?? "__default__"}
+            group={group}
+            companyPrefix={context.companyPrefix}
+            defaultExpanded
+          />
+        ))
+      ) : (
+        <>
+          <section style={boardGridStyle}>
+            {data.columns.filter((c) => c.key !== COLUMN_UNASSIGNED).map((column) => (
+              <ColumnPanel key={column.key} name={column.name} missions={column.missions} companyPrefix={context.companyPrefix} />
+            ))}
+          </section>
+          {data.columns.filter((c) => c.key === COLUMN_UNASSIGNED).map((column) => (
+            <ColumnPanel key={column.key} name={column.name} missions={column.missions} companyPrefix={context.companyPrefix} isUnassigned />
+          ))}
+        </>
+      )}
     </div>
   );
 }

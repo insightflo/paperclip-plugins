@@ -424,6 +424,24 @@ function emptyStep(): StepDraft {
   return { id: "", title: "", description: "", type: "agent", toolName: "", toolArgs: "{}", agentName: "", tools: "", dependsOn: "", onFailure: "" };
 }
 
+const collapsedStepHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: "10px",
+  padding: "10px 12px",
+  border: "1px solid var(--border, #334155)",
+  borderRadius: "8px",
+  background: "var(--background, #020617)",
+  cursor: "pointer",
+  fontSize: "13px",
+  userSelect: "none",
+};
+
+const selectedStepOutlineStyle: CSSProperties = {
+  outline: "2px solid color-mix(in srgb, var(--foreground, #f8fafc) 40%, transparent)",
+  outlineOffset: "-2px",
+};
+
 function StepEditor({
   steps,
   onChange,
@@ -431,6 +449,21 @@ function StepEditor({
   steps: StepDraft[];
   onChange: (steps: StepDraft[]) => void;
 }): JSX.Element {
+  const [collapsedSet, setCollapsedSet] = useState<Set<number>>(() => new Set(steps.map((_, i) => i)));
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+
+  function toggleCollapse(index: number) {
+    setCollapsedSet((prev) => {
+      const next = new Set(prev);
+      if (next.has(index)) {
+        next.delete(index);
+      } else {
+        next.add(index);
+      }
+      return next;
+    });
+  }
+
   function update(index: number, patch: Partial<StepDraft>) {
     const next = steps.map((s, i) => (i === index ? { ...s, ...patch } : s));
     onChange(next);
@@ -438,10 +471,38 @@ function StepEditor({
 
   function remove(index: number) {
     onChange(steps.filter((_, i) => i !== index));
+    setCollapsedSet((prev) => {
+      const next = new Set<number>();
+      for (const idx of prev) {
+        if (idx < index) next.add(idx);
+        else if (idx > index) next.add(idx - 1);
+      }
+      return next;
+    });
+    if (selectedIndex === index) setSelectedIndex(null);
+    else if (selectedIndex !== null && selectedIndex > index) setSelectedIndex(selectedIndex - 1);
   }
 
   function add() {
-    onChange([...steps, emptyStep()]);
+    if (selectedIndex !== null && selectedIndex >= 0 && selectedIndex < steps.length) {
+      const afterStep = steps[selectedIndex];
+      const newStep = { ...emptyStep(), dependsOn: afterStep.id.trim() };
+      const insertAt = selectedIndex + 1;
+      const next = [...steps.slice(0, insertAt), newStep, ...steps.slice(insertAt)];
+      onChange(next);
+      setCollapsedSet((prev) => {
+        const shifted = new Set<number>();
+        for (const idx of prev) {
+          if (idx < insertAt) shifted.add(idx);
+          else shifted.add(idx + 1);
+        }
+        return shifted;
+      });
+      setSelectedIndex(insertAt);
+    } else {
+      onChange([...steps, emptyStep()]);
+      setSelectedIndex(steps.length);
+    }
   }
 
   const allIds = steps.map((s) => s.id).filter(Boolean);
@@ -450,75 +511,136 @@ function StepEditor({
     <div style={{ display: "grid", gap: "10px" }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
         <span style={{ ...mutedTextStyle, fontWeight: 600 }}>Steps ({steps.length})</span>
-        <button type="button" style={buttonStyle} onClick={add}>+ Add Step</button>
-      </div>
-      {steps.map((step, i) => (
-        <div key={i} style={stepCardStyle}>
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-            <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--muted-foreground, #94a3b8)" }}>
-              Step {i + 1} — {step.type === "tool" ? "🔧 Tool" : "🤖 Agent"}
+        <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+          {selectedIndex !== null && (
+            <span style={{ fontSize: "11px", color: "var(--muted-foreground, #94a3b8)" }}>
+              insert after step {selectedIndex + 1}
             </span>
-            <button type="button" style={{ ...dangerButtonStyle, padding: "4px 8px", fontSize: "11px" }} onClick={() => remove(i)}>Remove</button>
-          </div>
-          <div style={stepRowStyle}>
-            <div style={{ display: "grid", gap: "4px" }}>
-              <label style={{ ...mutedTextStyle, fontSize: "11px" }}>ID</label>
-              <input style={inputStyle} value={step.id} placeholder="gather" onChange={(e) => update(i, { id: e.target.value })} />
-            </div>
-            <div style={{ display: "grid", gap: "4px" }}>
-              <label style={{ ...mutedTextStyle, fontSize: "11px" }}>Title</label>
-              <input style={inputStyle} value={step.title} placeholder="데이터 수집" onChange={(e) => update(i, { title: e.target.value })} />
-            </div>
-          </div>
-          <div style={{ display: "grid", gap: "4px" }}>
-            <label style={{ ...mutedTextStyle, fontSize: "11px" }}>Description (에이전트에게 전달할 작업 지시)</label>
-            <textarea style={{ ...textareaStyle, minHeight: "120px" }} value={step.description} placeholder="수집된 데이터를 분석하여 보고서를 작성하세요." onChange={(e) => update(i, { description: e.target.value })} rows={2} />
-          </div>
-          <div style={stepRowStyle}>
-            <div style={{ display: "grid", gap: "4px" }}>
-              <label style={{ ...mutedTextStyle, fontSize: "11px" }}>Type</label>
-              <select style={selectStyle} value={step.type} onChange={(e) => update(i, { type: e.target.value as "agent" | "tool" })}>
-                <option value="tool">🔧 Tool (시스템 실행)</option>
-                <option value="agent">🤖 Agent (에이전트 작업)</option>
-              </select>
-            </div>
-            <div style={{ display: "grid", gap: "4px" }}>
-              {step.type === "tool" ? (
-                <>
-                  <label style={{ ...mutedTextStyle, fontSize: "11px" }}>Tool Name</label>
-                  <input style={inputStyle} value={step.toolName} placeholder="daily-tech-scout" onChange={(e) => update(i, { toolName: e.target.value })} />
-                </>
-              ) : (
-                <>
-                  <label style={{ ...mutedTextStyle, fontSize: "11px" }}>Agent Name</label>
-                  <input style={inputStyle} value={step.agentName} placeholder="헐크" onChange={(e) => update(i, { agentName: e.target.value })} />
-                </>
-              )}
-            </div>
-          </div>
-          {step.type === "agent" && (
-            <div style={{ display: "grid", gap: "4px" }}>
-              <label style={{ ...mutedTextStyle, fontSize: "11px" }}>Tools (에이전트가 사용할 도구, comma-separated)</label>
-              <input style={inputStyle} value={step.tools} placeholder="write-obsidian-report" onChange={(e) => update(i, { tools: e.target.value })} />
-            </div>
           )}
-          <div style={stepRowStyle}>
-            <div style={{ display: "grid", gap: "4px" }}>
-              <label style={{ ...mutedTextStyle, fontSize: "11px" }}>Depends On (comma-separated IDs)</label>
-              <input style={inputStyle} value={step.dependsOn} placeholder={allIds.filter((id) => id !== step.id).join(", ") || "none"} onChange={(e) => update(i, { dependsOn: e.target.value })} />
+          <button type="button" style={buttonStyle} onClick={add}>+ Add Step</button>
+        </div>
+      </div>
+      {steps.map((step, i) => {
+        const isCollapsed = collapsedSet.has(i);
+        const isSelected = selectedIndex === i;
+
+        if (isCollapsed) {
+          return (
+            <div
+              key={i}
+              style={{
+                ...collapsedStepHeaderStyle,
+                ...(isSelected ? selectedStepOutlineStyle : {}),
+              }}
+              onClick={() => {
+                setSelectedIndex(isSelected ? null : i);
+              }}
+              onDoubleClick={() => toggleCollapse(i)}
+            >
+              <span style={{ fontSize: "11px", color: "var(--muted-foreground, #94a3b8)", minWidth: "18px" }}>{i + 1}</span>
+              <span style={{ fontSize: "13px" }}>{step.type === "tool" ? "\uD83D\uDD27" : "\uD83E\uDD16"}</span>
+              <span style={{ fontWeight: 600, fontSize: "13px", color: "var(--foreground, #f8fafc)" }}>
+                {step.id || "(no id)"}
+              </span>
+              {step.title && (
+                <span style={{ color: "var(--muted-foreground, #94a3b8)", fontSize: "12px" }}>
+                  — {step.title}
+                </span>
+              )}
+              <span style={{ marginLeft: "auto", display: "flex", gap: "4px", alignItems: "center" }}>
+                <button
+                  type="button"
+                  style={{ ...buttonStyle, padding: "2px 8px", fontSize: "11px" }}
+                  onClick={(e) => { e.stopPropagation(); toggleCollapse(i); }}
+                >Expand</button>
+                <button
+                  type="button"
+                  style={{ ...dangerButtonStyle, padding: "2px 8px", fontSize: "11px" }}
+                  onClick={(e) => { e.stopPropagation(); remove(i); }}
+                >Remove</button>
+              </span>
             </div>
-            <div style={{ display: "grid", gap: "4px" }}>
-              <label style={{ ...mutedTextStyle, fontSize: "11px" }}>On Failure</label>
-              <select style={selectStyle} value={step.onFailure} onChange={(e) => update(i, { onFailure: e.target.value })}>
-                <option value="">default</option>
-                <option value="retry">retry</option>
-                <option value="skip">skip</option>
-                <option value="abort_workflow">abort workflow</option>
-              </select>
+          );
+        }
+
+        return (
+          <div
+            key={i}
+            style={{
+              ...stepCardStyle,
+              ...(isSelected ? selectedStepOutlineStyle : {}),
+            }}
+            onClick={() => setSelectedIndex(isSelected ? null : i)}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--muted-foreground, #94a3b8)" }}>
+                Step {i + 1} — {step.type === "tool" ? "\uD83D\uDD27 Tool" : "\uD83E\uDD16 Agent"}
+              </span>
+              <div style={{ display: "flex", gap: "4px" }}>
+                <button type="button" style={{ ...buttonStyle, padding: "4px 8px", fontSize: "11px" }} onClick={(e) => { e.stopPropagation(); toggleCollapse(i); }}>Collapse</button>
+                <button type="button" style={{ ...dangerButtonStyle, padding: "4px 8px", fontSize: "11px" }} onClick={(e) => { e.stopPropagation(); remove(i); }}>Remove</button>
+              </div>
+            </div>
+            <div style={stepRowStyle} onClick={(e) => e.stopPropagation()}>
+              <div style={{ display: "grid", gap: "4px" }}>
+                <label style={{ ...mutedTextStyle, fontSize: "11px" }}>ID</label>
+                <input style={inputStyle} value={step.id} placeholder="gather" onChange={(e) => update(i, { id: e.target.value })} />
+              </div>
+              <div style={{ display: "grid", gap: "4px" }}>
+                <label style={{ ...mutedTextStyle, fontSize: "11px" }}>Title</label>
+                <input style={inputStyle} value={step.title} placeholder="데이터 수집" onChange={(e) => update(i, { title: e.target.value })} />
+              </div>
+            </div>
+            <div style={{ display: "grid", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
+              <label style={{ ...mutedTextStyle, fontSize: "11px" }}>Description (에이전트에게 전달할 작업 지시)</label>
+              <textarea style={{ ...textareaStyle, minHeight: "120px" }} value={step.description} placeholder="수집된 데이터를 분석하여 보고서를 작성하세요." onChange={(e) => update(i, { description: e.target.value })} rows={2} />
+            </div>
+            <div style={stepRowStyle} onClick={(e) => e.stopPropagation()}>
+              <div style={{ display: "grid", gap: "4px" }}>
+                <label style={{ ...mutedTextStyle, fontSize: "11px" }}>Type</label>
+                <select style={selectStyle} value={step.type} onChange={(e) => update(i, { type: e.target.value as "agent" | "tool" })}>
+                  <option value="tool">{"\uD83D\uDD27"} Tool (시스템 실행)</option>
+                  <option value="agent">{"\uD83E\uDD16"} Agent (에이전트 작업)</option>
+                </select>
+              </div>
+              <div style={{ display: "grid", gap: "4px" }}>
+                {step.type === "tool" ? (
+                  <>
+                    <label style={{ ...mutedTextStyle, fontSize: "11px" }}>Tool Name</label>
+                    <input style={inputStyle} value={step.toolName} placeholder="daily-tech-scout" onChange={(e) => update(i, { toolName: e.target.value })} />
+                  </>
+                ) : (
+                  <>
+                    <label style={{ ...mutedTextStyle, fontSize: "11px" }}>Agent Name</label>
+                    <input style={inputStyle} value={step.agentName} placeholder="헐크" onChange={(e) => update(i, { agentName: e.target.value })} />
+                  </>
+                )}
+              </div>
+            </div>
+            {step.type === "agent" && (
+              <div style={{ display: "grid", gap: "4px" }} onClick={(e) => e.stopPropagation()}>
+                <label style={{ ...mutedTextStyle, fontSize: "11px" }}>Tools (에이전트가 사용할 도구, comma-separated)</label>
+                <input style={inputStyle} value={step.tools} placeholder="write-obsidian-report" onChange={(e) => update(i, { tools: e.target.value })} />
+              </div>
+            )}
+            <div style={stepRowStyle} onClick={(e) => e.stopPropagation()}>
+              <div style={{ display: "grid", gap: "4px" }}>
+                <label style={{ ...mutedTextStyle, fontSize: "11px" }}>Depends On (comma-separated IDs)</label>
+                <input style={inputStyle} value={step.dependsOn} placeholder={allIds.filter((id) => id !== step.id).join(", ") || "none"} onChange={(e) => update(i, { dependsOn: e.target.value })} />
+              </div>
+              <div style={{ display: "grid", gap: "4px" }}>
+                <label style={{ ...mutedTextStyle, fontSize: "11px" }}>On Failure</label>
+                <select style={selectStyle} value={step.onFailure} onChange={(e) => update(i, { onFailure: e.target.value })}>
+                  <option value="">default</option>
+                  <option value="retry">retry</option>
+                  <option value="skip">skip</option>
+                  <option value="abort_workflow">abort workflow</option>
+                </select>
+              </div>
             </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
       {steps.length === 0 && <p style={mutedTextStyle}>No steps yet. Click "+ Add Step" to begin.</p>}
     </div>
   );

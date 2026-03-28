@@ -15,6 +15,7 @@
   "scripts": {
     "build": "tsc && node ./scripts/build-ui.mjs",
     "clean": "rm -rf dist",
+    "test": "pnpm build && node --test ./tests/*.test.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

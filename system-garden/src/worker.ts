@@ -15,7 +15,11 @@ type AgentMetrics = {
 };
 
 export type GardenSnapshot = {
-  meta: { generatedAt: string; agentCount: number; issueCount: number };
+  meta: {
+    generatedAt: string;
+    agentCount: number;
+    issueCount: number;
+  };
   graph: { nodes: GraphNode[]; edges: GraphEdge[] };
   cards: HealthCard[];
   questions: MetaQuestion[];
@@ -516,6 +520,28 @@ function mergeGraphs(
   return { nodes, edges };
 }
 
+async function listAllAgents(context: PluginContext, companyId: string): Promise<AgentRecord[]> {
+  const limit = 250;
+  const items: AgentRecord[] = [];
+  for (let offset = 0; ; offset += limit) {
+    const batch = await context.agents.list({ companyId, limit, offset });
+    items.push(...batch);
+    if (batch.length < limit) break;
+  }
+  return items;
+}
+
+async function listAllIssues(context: PluginContext, companyId: string): Promise<IssueRecord[]> {
+  const limit = 250;
+  const items: IssueRecord[] = [];
+  for (let offset = 0; ; offset += limit) {
+    const batch = await context.issues.list({ companyId, limit, offset });
+    items.push(...batch);
+    if (batch.length < limit) break;
+  }
+  return items;
+}
+
 async function loadUaKnowledgeGraph(context: PluginContext): Promise<UaKnowledgeGraph | null> {
   const kgPath = resolveUaKnowledgeGraphPath();
   try {
@@ -736,8 +762,8 @@ export async function buildGardenSnapshot(
   const codeLayerSource = input.codeLayerSource ?? "knowledge-graph";
 
   const [agents, issues] = await Promise.all([
-    context.agents.list({ companyId: input.companyId, limit: 300, offset: 0 }),
-    context.issues.list({ companyId: input.companyId, limit: 1200, offset: 0 }),
+    listAllAgents(context, input.companyId),
+    listAllIssues(context, input.companyId),
   ]);
 
   let codeGraph: { nodes: GraphNode[]; edges: GraphEdge[] } = { nodes: [], edges: [] };
@@ -791,8 +817,8 @@ const plugin = definePlugin({
       if (!companyId || !agentId) return null;
 
       const [agents, issues] = await Promise.all([
-        context.agents.list({ companyId, limit: 300, offset: 0 }),
-        context.issues.list({ companyId, limit: 400, offset: 0 }),
+        listAllAgents(context, companyId),
+        listAllIssues(context, companyId),
       ]);
 
       return buildAgentDetailSnapshot(agents, issues, agentId);

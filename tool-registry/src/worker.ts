@@ -677,7 +677,7 @@ async function executeToolForSystem(
       env: { ...process.env, ...(tool.data.env ?? {}) },
       encoding: "utf8",
       maxBuffer: 4 * 1024 * 1024,
-      timeout: 5 * 60 * 1000,
+      timeout: 15 * 60 * 1000,
     });
 
     const stdout = stringifyOutput(result.stdout);

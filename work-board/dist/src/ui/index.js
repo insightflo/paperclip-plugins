@@ -2,6 +2,7 @@ import { jsx as _jsx, jsxs as _jsxs, Fragment as _Fragment } from "react/jsx-run
 import { usePluginData } from "@paperclipai/plugin-sdk/ui";
 import { useState } from "react";
 import { COLUMN_UNASSIGNED, PAGE_ROUTE } from "../constants.js";
+import { MissionGraphPanel } from "../mission-graph-panel.js";
 const pageStyle = {
     display: "grid",
     gap: "24px",
@@ -46,6 +47,7 @@ const columnStyle = {
     border: "1px solid color-mix(in srgb, var(--border, #d4d4d8) 78%, transparent)",
     background: "color-mix(in srgb, var(--card, #ffffff) 96%, transparent)",
     boxShadow: "0 18px 48px rgba(15, 23, 42, 0.05)",
+    maxWidth: "calc(50% - 9px)",
 };
 const missionCardStyle = {
     display: "grid",
@@ -178,6 +180,31 @@ function ColumnPanel({ name, missions, companyPrefix, isUnassigned, }) {
     }
     return (_jsxs("section", { style: columnStyle, children: [_jsxs("div", { style: { display: "flex", justifyContent: "space-between", gap: "8px", alignItems: "center" }, children: [_jsx("strong", { style: { fontSize: "17px" }, children: name }), _jsxs("span", { style: { ...tinyMutedStyle, padding: "4px 8px", borderRadius: "999px", background: "color-mix(in srgb, var(--muted, #e5e7eb) 52%, transparent)" }, children: [missions.length, " \uBBF8\uC158"] })] }), missions.length > 0 ? missions.map((mission) => (_jsx(MissionCardPanel, { mission: mission, companyPrefix: companyPrefix }, mission.missionId))) : (_jsx("div", { style: tinyMutedStyle, children: "\uD45C\uC2DC\uD560 \uBBF8\uC158\uC774 \uC5C6\uC2B5\uB2C8\uB2E4." }))] }));
 }
+const projectGroupStyle = {
+    display: "grid",
+    gap: "18px",
+};
+const projectHeaderStyle = {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: "12px",
+    width: "100%",
+    border: "none",
+    padding: "16px 20px",
+    borderRadius: "18px",
+    background: "linear-gradient(135deg, color-mix(in srgb, var(--accent, #7dd3fc) 14%, transparent), color-mix(in srgb, var(--card, #ffffff) 96%, transparent))",
+    borderBottom: "2px solid color-mix(in srgb, var(--accent, #7dd3fc) 36%, transparent)",
+    cursor: "pointer",
+    textAlign: "left",
+    color: "inherit",
+};
+function ProjectGroupPanel({ group, companyPrefix, defaultExpanded, }) {
+    const [expanded, setExpanded] = useState(defaultExpanded ?? true);
+    const totalMissions = group.columns.reduce((sum, col) => sum + col.missionCount, 0);
+    const totalTasks = group.columns.reduce((sum, col) => sum + col.missions.reduce((mSum, m) => mSum + m.buckets.reduce((bSum, b) => bSum + b.count, 0), 0), 0);
+    return (_jsxs("section", { style: projectGroupStyle, children: [_jsxs("button", { type: "button", style: projectHeaderStyle, onClick: () => setExpanded((v) => !v), children: [_jsxs("div", { style: { display: "flex", alignItems: "center", gap: "10px" }, children: [_jsx("span", { "aria-hidden": "true", style: { fontSize: "14px", opacity: 0.5 }, children: expanded ? "▾" : "▸" }), _jsx("strong", { style: { fontSize: "20px", letterSpacing: "-0.01em" }, children: group.projectName })] }), _jsxs("div", { style: { display: "flex", alignItems: "center", gap: "10px" }, children: [_jsxs("span", { style: { ...tinyMutedStyle, padding: "4px 10px", borderRadius: "999px", background: "color-mix(in srgb, var(--accent, #7dd3fc) 18%, transparent)" }, children: [totalMissions, " \uBBF8\uC158"] }), _jsxs("span", { style: { ...tinyMutedStyle, padding: "4px 10px", borderRadius: "999px", background: "color-mix(in srgb, var(--muted, #e5e7eb) 52%, transparent)" }, children: [totalTasks, " \uD0DC\uC2A4\uD06C"] })] })] }), expanded ? (_jsxs(_Fragment, { children: [_jsx("section", { style: boardGridStyle, children: group.columns.filter((c) => c.key !== COLUMN_UNASSIGNED).map((column) => (_jsx(ColumnPanel, { name: column.name, missions: column.missions, companyPrefix: companyPrefix }, column.key))) }), group.columns.filter((c) => c.key === COLUMN_UNASSIGNED).map((column) => (_jsx(ColumnPanel, { name: column.name, missions: column.missions, companyPrefix: companyPrefix, isUnassigned: true }, column.key)))] })) : null] }));
+}
 function BoardContent({ context, data, onRefresh, loading, }) {
     return (_jsxs("div", { style: pageStyle, children: [_jsxs("section", { style: heroStyle, children: [_jsxs("div", { style: { display: "grid", gap: "8px" }, children: [_jsx("div", { style: { ...tinyMutedStyle, textTransform: "uppercase", letterSpacing: "0.08em" }, children: "mission-first board" }), _jsxs("div", { style: { display: "flex", alignItems: "center", gap: "16px" }, children: [_jsx("h1", { style: { margin: 0, fontSize: "clamp(28px, 4vw, 42px)", lineHeight: 1.02 }, children: "\uAE08\uC8FC \uBBF8\uC158 \uBCF4\uB4DC" }), _jsx("button", { type: "button", onClick: onRefresh, disabled: loading, style: {
                                             padding: "8px 16px",
@@ -188,7 +215,7 @@ function BoardContent({ context, data, onRefresh, loading, }) {
                                             fontSize: "13px",
                                             color: "inherit",
                                             opacity: loading ? 0.5 : 1,
-                                        }, children: loading ? "갱신 중..." : "↻ 새로고침" })] }), _jsx("div", { style: { fontSize: "15px", lineHeight: 1.6, maxWidth: "760px" }, children: "parent issue\uB97C \uBBF8\uC158\uC73C\uB85C \uBCF4\uACE0 \uD558\uC704 \uC774\uC288\uB97C \uADF8\uB8F9\uD654\uD569\uB2C8\uB2E4. \uD558\uC704 \uB77C\uBCA8\uC774 \uC5C6\uC73C\uBA74 \uBD80\uBAA8 \uB77C\uBCA8\uC744 \uC0C1\uC18D\uD574 \uCE7C\uB7FC\uC5D0 \uBC30\uCE58\uD569\uB2C8\uB2E4." })] }), _jsxs("div", { style: metricsGridStyle, children: [_jsx(MetricCard, { label: "\uBBF8\uC158 \uC218", value: data.columns.filter((c) => c.key !== COLUMN_UNASSIGNED).reduce((sum, c) => sum + c.missionCount, 0), helper: "\uC774\uBC88 \uC8FC \uCD94\uC801 \uC911\uC778 \uBBF8\uC158 (\uBBF8\uBD84\uB958 \uC81C\uC678)", accent: "#0ea5e9" }), _jsx(MetricCard, { label: "\uB300\uAE30", value: data.totals.todo, helper: "\uB300\uAE30 \uC911\uC778 \uD0DC\uC2A4\uD06C", accent: "#f59e0b" }), _jsx(MetricCard, { label: "\uC9C4\uD589", value: data.totals.inProgress, helper: "\uC9C4\uD589 \uC911\uC778 \uD0DC\uC2A4\uD06C", accent: "#3b82f6" }), _jsx(MetricCard, { label: "\uC9C0\uC5F0", value: data.totals.overdue, helper: "N\uC77C \uC774\uC0C1 \uBBF8\uCC98\uB9AC", accent: "#ef4444" })] })] }), _jsxs("div", { style: { display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "center", flexWrap: "wrap" }, children: [_jsx("div", { style: tinyMutedStyle, children: data.weekRange.label }), _jsxs("a", { href: pluginPagePath(context.companyPrefix), style: { ...anchorResetStyle, ...tinyMutedStyle }, children: ["route: ", pluginPagePath(context.companyPrefix)] })] }), _jsx("section", { style: boardGridStyle, children: data.columns.filter((c) => c.key !== COLUMN_UNASSIGNED).map((column) => (_jsx(ColumnPanel, { name: column.name, missions: column.missions, companyPrefix: context.companyPrefix }, column.key))) }), data.columns.filter((c) => c.key === COLUMN_UNASSIGNED).map((column) => (_jsx(ColumnPanel, { name: column.name, missions: column.missions, companyPrefix: context.companyPrefix, isUnassigned: true }, column.key)))] }));
+                                        }, children: loading ? "갱신 중..." : "↻ 새로고침" })] }), _jsx("div", { style: { fontSize: "15px", lineHeight: 1.6, maxWidth: "760px" }, children: "parent issue\uB97C \uBBF8\uC158\uC73C\uB85C \uBCF4\uACE0 \uD558\uC704 \uC774\uC288\uB97C \uADF8\uB8F9\uD654\uD569\uB2C8\uB2E4. \uD558\uC704 \uB77C\uBCA8\uC774 \uC5C6\uC73C\uBA74 \uBD80\uBAA8 \uB77C\uBCA8\uC744 \uC0C1\uC18D\uD574 \uCE7C\uB7FC\uC5D0 \uBC30\uCE58\uD569\uB2C8\uB2E4. \uBBF8\uC158 \uADF8\uB798\uD504\uB294 \uC81C\uBAA9 prefix, \uB313\uAE00, \uC7AC\uC774\uC288, \uC0C1\uC704 \uAD00\uACC4\uB97C \uADDC\uCE59 \uAE30\uBC18\uC73C\uB85C \uBB36\uC5B4 \uBCF4\uC5EC\uC90D\uB2C8\uB2E4." })] }), _jsxs("div", { style: metricsGridStyle, children: [_jsx(MetricCard, { label: "\uBBF8\uC158 \uC218", value: data.columns.filter((c) => c.key !== COLUMN_UNASSIGNED).reduce((sum, c) => sum + c.missionCount, 0), helper: "\uC774\uBC88 \uC8FC \uCD94\uC801 \uC911\uC778 \uBBF8\uC158 (\uBBF8\uBD84\uB958 \uC81C\uC678)", accent: "#0ea5e9" }), _jsx(MetricCard, { label: "\uB300\uAE30", value: data.totals.todo, helper: "\uB300\uAE30 \uC911\uC778 \uD0DC\uC2A4\uD06C", accent: "#f59e0b" }), _jsx(MetricCard, { label: "\uC9C4\uD589", value: data.totals.inProgress, helper: "\uC9C4\uD589 \uC911\uC778 \uD0DC\uC2A4\uD06C", accent: "#3b82f6" }), _jsx(MetricCard, { label: "\uC9C0\uC5F0", value: data.totals.overdue, helper: "N\uC77C \uC774\uC0C1 \uBBF8\uCC98\uB9AC", accent: "#ef4444" })] })] }), _jsx(MissionGraphPanel, { graph: data, companyPrefix: context.companyPrefix }), _jsxs("div", { style: { display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "center", flexWrap: "wrap" }, children: [_jsx("div", { style: tinyMutedStyle, children: data.weekRange.label }), _jsxs("a", { href: pluginPagePath(context.companyPrefix), style: { ...anchorResetStyle, ...tinyMutedStyle }, children: ["route: ", pluginPagePath(context.companyPrefix)] })] }), data.projectGroups && data.projectGroups.length > 0 ? (data.projectGroups.map((group) => (_jsx(ProjectGroupPanel, { group: group, companyPrefix: context.companyPrefix, defaultExpanded: true }, group.projectId ?? "__default__")))) : (_jsxs(_Fragment, { children: [_jsx("section", { style: boardGridStyle, children: data.columns.filter((c) => c.key !== COLUMN_UNASSIGNED).map((column) => (_jsx(ColumnPanel, { name: column.name, missions: column.missions, companyPrefix: context.companyPrefix }, column.key))) }), data.columns.filter((c) => c.key === COLUMN_UNASSIGNED).map((column) => (_jsx(ColumnPanel, { name: column.name, missions: column.missions, companyPrefix: context.companyPrefix, isUnassigned: true }, column.key)))] }))] }));
 }
 function WorkBoardHelpSection() {
     const [showHelp, setShowHelp] = useState(false);
