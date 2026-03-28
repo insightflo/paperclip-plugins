@@ -254,6 +254,47 @@ function DataError({ error }: { error: unknown }): JSX.Element | null {
   return <p style={{ ...mutedStyle, color: "#b91c1c" }}>{(error as Error)?.message ?? String(error)}</p>;
 }
 
+function BridgeHelpSection(): JSX.Element {
+  const [showHelp, setShowHelp] = useState(false);
+
+  return (
+    <section style={cardStyle}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <strong style={{ fontSize: "14px" }}>Help</strong>
+        <button type="button" style={buttonStyle} onClick={() => setShowHelp(!showHelp)}>
+          {showHelp ? "닫기" : "도움말"}
+        </button>
+      </div>
+      {showHelp && (
+        <div style={mutedStyle}>
+          <p style={{ ...mutedStyle, fontWeight: 600, fontSize: "14px", marginBottom: "8px" }}>Service Request Bridge 도움말</p>
+
+          <p style={{ ...mutedStyle, fontWeight: 600, marginTop: "12px" }}>기본 개념</p>
+          <ul style={{ margin: "4px 0", paddingLeft: "20px" }}>
+            <li><strong>Bridge Link</strong>: 두 회사 간 이슈를 연결하는 양방향 링크</li>
+            <li><strong>Mirror Issue</strong>: 요청 이슈의 사본을 제공자 회사에 자동 생성</li>
+            <li><strong>Sync</strong>: 한쪽 이슈 상태 변경 시 자동으로 반대쪽도 변경</li>
+          </ul>
+
+          <p style={{ ...mutedStyle, fontWeight: 600, marginTop: "12px" }}>설정</p>
+          <ul style={{ margin: "4px 0", paddingLeft: "20px" }}>
+            <li><strong>Provider Company</strong>: 서비스 제공 회사 이름</li>
+            <li><strong>Requester Label</strong>: 자동 미러링 트리거 라벨 (기본: 유지보수)</li>
+            <li><strong>Workflow Trigger Label</strong>: 미러 이슈에 붙일 워크플로우 트리거 라벨</li>
+          </ul>
+
+          <p style={{ ...mutedStyle, fontWeight: 600, marginTop: "12px" }}>방향 제어</p>
+          <ul style={{ margin: "4px 0", paddingLeft: "20px" }}>
+            <li><strong>two-way</strong>: 양방향 동기화</li>
+            <li><strong>local-to-remote</strong>: 로컬 → 리모트만</li>
+            <li><strong>remote-to-local</strong>: 리모트 → 로컬만</li>
+          </ul>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function ServiceRequestBridgeListTab(props: GenericIssueTabProps): JSX.Element {
   const host = useHostContext();
   const companyId = host.companyId ?? props.context?.companyId ?? "";
@@ -340,6 +381,8 @@ export function ServiceRequestBridgeListTab(props: GenericIssueTabProps): JSX.El
           )}
         </section>
       ) : null}
+
+      <BridgeHelpSection />
     </div>
   );
 }

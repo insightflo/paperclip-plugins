@@ -46,6 +46,7 @@ type BridgePluginConfig = {
   providerCompanyName: string;
   requesterLabelName: string;
   autoCreateMirrorIssue: boolean;
+  workflowTriggerLabel: string;
 };
 
 type ListTabSnapshot = {
@@ -258,6 +259,7 @@ async function getBridgeConfig(ctx: PluginContext): Promise<BridgePluginConfig> 
     providerCompanyName: asString(raw.providerCompanyName),
     requesterLabelName: asString(raw.requesterLabelName) || DEFAULT_REQUESTER_LABEL,
     autoCreateMirrorIssue: asBoolean(raw.autoCreateMirrorIssue, true),
+    workflowTriggerLabel: asString(raw.workflowTriggerLabel),
   };
 }
 
@@ -812,11 +814,25 @@ async function handleIssueCreated(ctx: PluginContext, event: PluginEvent): Promi
     return;
   }
 
-  const mirrorIssue = await ctx.issues.create({
+  const workflowLabel = typeof config.workflowTriggerLabel === "string" && config.workflowTriggerLabel.trim()
+    ? config.workflowTriggerLabel.trim()
+    : "";
+  const mirrorTitle = workflowLabel
+    ? `[${workflowLabel}] ${MIRROR_TITLE_PREFIX} ${sourceTitle}`
+    : `${MIRROR_TITLE_PREFIX} ${sourceTitle}`;
+
+  const mirrorCreateParams: Record<string, unknown> = {
     companyId: providerCompany.id,
-    title: `${MIRROR_TITLE_PREFIX} ${sourceTitle}`,
+    title: mirrorTitle,
     description: sourceDescription,
-  });
+  };
+  if (workflowLabel) {
+    mirrorCreateParams.labels = [workflowLabel];
+  }
+
+  const mirrorIssue = await ctx.issues.create(
+    mirrorCreateParams as Parameters<typeof ctx.issues.create>[0],
+  );
 
   await upsertBridgePair(ctx, {
     localCompanyId: refs.companyId,

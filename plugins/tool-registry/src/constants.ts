@@ -30,6 +30,7 @@ export const ACTION_KEYS = {
   createTool: "tool-registry.create-tool",
   updateTool: "tool-registry.update-tool",
   deleteTool: "tool-registry.delete-tool",
+  restoreTool: "tool-registry.restore-tool",
   grantTool: "tool-registry.grant-tool",
   revokeTool: "tool-registry.revoke-tool",
 } as const;

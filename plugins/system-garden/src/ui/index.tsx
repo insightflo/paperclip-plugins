@@ -1,5 +1,5 @@
 import { usePluginData, type PluginPageProps, type PluginSidebarProps } from "@paperclipai/plugin-sdk/ui";
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from "react";
 import { NODE_COLORS, PAGE_ROUTE } from "../constants.js";
 import type { AgentDetailSnapshot, GardenSnapshot, GraphEdge, GraphNode, HealthCard, MetaQuestion } from "../worker.js";
 
@@ -78,6 +78,22 @@ const mutedStyle: CSSProperties = {
   lineHeight: 1.5,
 };
 
+const buttonStyle: CSSProperties = {
+  border: "1px solid color-mix(in srgb, var(--border, #334155) 74%, transparent)",
+  borderRadius: "8px",
+  background: "color-mix(in srgb, var(--card, #0b1220) 94%, transparent)",
+  color: "var(--foreground, #e2e8f0)",
+  fontSize: "13px",
+  fontWeight: 600,
+  cursor: "pointer",
+  padding: "8px 12px",
+};
+
+const buttonDisabledStyle: CSSProperties = {
+  opacity: 0.65,
+  cursor: "not-allowed",
+};
+
 function hostPath(companyPrefix: string | null | undefined, suffix: string): string {
   return companyPrefix ? `/${companyPrefix}${suffix}` : suffix;
 }
@@ -115,8 +131,10 @@ function buildElements(nodes: GraphNode[], edges: GraphEdge[]): CytoscapeElement
   return [...nodeElements, ...edgeElements];
 }
 
+const CODE_NODE_KINDS = new Set<GraphNode["kind"]>(["module", "file", "function", "class", "tool"]);
+
 function isCodeNode(node: GraphNode): boolean {
-  return node.kind !== "agent";
+  return CODE_NODE_KINDS.has(node.kind);
 }
 
 function filterGraphByLayer(
@@ -127,7 +145,8 @@ function filterGraphByLayer(
   const filteredNodes = nodes.filter((node) => {
     if (layerFilter === "all") return true;
     if (layerFilter === "agent") return node.kind === "agent";
-    return isCodeNode(node);
+    if (layerFilter === "code") return isCodeNode(node);
+    return true;
   });
   const nodeIds = new Set(filteredNodes.map((node) => node.id));
   const filteredEdges = edges.filter((edge) => nodeIds.has(edge.source) && nodeIds.has(edge.target));
@@ -213,14 +232,86 @@ export function QuestionList({ questions }: { questions: MetaQuestion[] }) {
   );
 }
 
-function AgentDetailPanel({
+type IssueLink = {
+  node: GraphNode;
+  relation: string;
+  direction: "incoming" | "outgoing";
+};
+
+function collectIssueLinks(selectedNodeId: string, nodes: GraphNode[], edges: GraphEdge[]): {
+  incomingIssueLinks: IssueLink[];
+  outgoingIssueLinks: IssueLink[];
+  assigneeLinks: IssueLink[];
+} {
+  const nodeById = new Map(nodes.map((node) => [node.id, node] as const));
+  const incomingIssueLinks: IssueLink[] = [];
+  const outgoingIssueLinks: IssueLink[] = [];
+  const assigneeLinks: IssueLink[] = [];
+
+  for (const edge of edges) {
+    if (edge.source === selectedNodeId) {
+      const target = nodeById.get(edge.target);
+      if (!target) continue;
+      const link: IssueLink = { node: target, relation: edge.label, direction: "outgoing" };
+      if (target.kind === "agent" && edge.label === "assignee") assigneeLinks.push(link);
+    }
+
+    if (edge.target === selectedNodeId) {
+      const source = nodeById.get(edge.source);
+      if (!source) continue;
+      const link: IssueLink = { node: source, relation: edge.label, direction: "incoming" };
+      if (source.kind === "agent" && edge.label === "assignee") assigneeLinks.push(link);
+    }
+  }
+
+  return { incomingIssueLinks, outgoingIssueLinks, assigneeLinks };
+}
+
+function IssueLinkList({
+  title,
+  links,
+}: {
+  title: string;
+  links: IssueLink[];
+}) {
+  if (links.length === 0) return null;
+
+  return (
+    <div style={{ display: "grid", gap: "6px" }}>
+      <div style={{ ...mutedStyle, fontSize: "11px", textTransform: "uppercase", letterSpacing: "0.06em" }}>{title}</div>
+      {links.map((link) => (
+        <div
+          key={`${title}-${link.direction}-${link.node.id}-${link.relation}`}
+          style={{
+            padding: "8px 10px",
+            borderRadius: "10px",
+            border: "1px solid color-mix(in srgb, var(--border, #334155) 74%, transparent)",
+            background: "color-mix(in srgb, var(--background, #020617) 68%, transparent)",
+          }}
+        >
+          <div style={{ fontSize: "13px", lineHeight: 1.4 }}>{link.node.label}</div>
+          <div style={mutedStyle}>
+            {link.relation} · {link.node.kind}
+            {link.node.summary ? ` · ${link.node.summary}` : ""}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function NodeDetailPanel({
   selectedNode,
   detail,
   loading,
+  nodes,
+  edges,
 }: {
   selectedNode: GraphNode | null;
   detail: AgentDetailSnapshot | null;
   loading: boolean;
+  nodes: GraphNode[];
+  edges: GraphEdge[];
 }) {
   if (!selectedNode) {
     return <div style={mutedStyle}>노드를 클릭하면 상세 정보가 표시됩니다.</div>;
@@ -282,6 +373,19 @@ export function SystemGardenPage({ context }: PluginPageProps) {
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [graphError, setGraphError] = useState<string | null>(null);
   const graphRef = useRef<HTMLDivElement | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const refreshSnapshot = useCallback(async () => {
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      await snapshot.refresh();
+    } finally {
+      setIsRefreshing(false);
+    }
+  }, [isRefreshing, snapshot]);
+
+  const refreshButtonLabel = isRefreshing ? "갱신 중..." : "\u21BB Refresh";
 
   const filteredGraph = useMemo(() => {
     if (!snapshot.data) return { nodes: [], edges: [] };
@@ -443,12 +547,23 @@ export function SystemGardenPage({ context }: PluginPageProps) {
   return (
     <div style={pageStyle}>
       <header style={{ ...panelStyle, padding: "18px 20px", display: "grid", gap: "8px" }}>
-        <h1 style={{ margin: 0, fontSize: "clamp(26px, 3.2vw, 38px)", lineHeight: 1.03 }}>System Garden</h1>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+          <h1 style={{ margin: 0, fontSize: "clamp(26px, 3.2vw, 38px)", lineHeight: 1.03 }}>System Garden</h1>
+          <button
+            type="button"
+            onClick={() => { void refreshSnapshot(); }}
+            disabled={isRefreshing}
+            style={isRefreshing ? { ...buttonStyle, ...buttonDisabledStyle } : buttonStyle}
+          >
+            {refreshButtonLabel}
+          </button>
+        </div>
         <div style={{ ...mutedStyle, fontSize: "13px" }}>
-          에이전트 그래프와 코드 KG를 레이어별로 겹쳐 보며 운영 건강도와 메타인지 질문을 점검합니다.
+          에이전트 그래프, 코드 KG, 미션보드 이슈 그래프를 규칙 기반으로 합쳐 운영 건강도와 후속 미션 관계를 점검합니다.
         </div>
         <div style={mutedStyle}>
-          agents: {snapshot.data.meta.agentCount} · issues: {snapshot.data.meta.issueCount} · generated: {new Date(snapshot.data.meta.generatedAt).toLocaleString("ko-KR")}
+          agents: {snapshot.data.meta.agentCount} · issues: {snapshot.data.meta.issueCount}
+          · generated: {new Date(snapshot.data.meta.generatedAt).toLocaleString("ko-KR")}
         </div>
       </header>
 
@@ -457,9 +572,9 @@ export function SystemGardenPage({ context }: PluginPageProps) {
           <h2 style={panelTitleStyle}>Graph</h2>
           <div style={{ display: "inline-flex", gap: "6px", background: "rgba(15,23,42,0.55)", borderRadius: "999px", padding: "4px" }}>
             {([
-              { value: "all", label: "전체" },
               { value: "agent", label: "에이전트만" },
               { value: "code", label: "코드만" },
+              { value: "all", label: "전체" },
             ] as const).map((option) => (
               <button
                 key={option.value}
@@ -512,7 +627,13 @@ export function SystemGardenPage({ context }: PluginPageProps) {
               padding: "12px",
             }}
           >
-            <AgentDetailPanel selectedNode={selectedNode} detail={detail.data ?? null} loading={detail.loading} />
+            <NodeDetailPanel
+              selectedNode={selectedNode}
+              detail={detail.data ?? null}
+              loading={detail.loading}
+              nodes={filteredGraph.nodes}
+              edges={filteredGraph.edges}
+            />
           </aside>
         </div>
       </section>
@@ -526,7 +647,61 @@ export function SystemGardenPage({ context }: PluginPageProps) {
         <h2 style={panelTitleStyle}>Questions</h2>
         <QuestionList questions={snapshot.data.questions} />
       </section>
+
+      <GardenHelpSection />
     </div>
+  );
+}
+
+function GardenHelpSection() {
+  const [showHelp, setShowHelp] = useState(false);
+
+  return (
+    <section style={{ ...panelStyle, padding: "14px", display: "grid", gap: "12px" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <h2 style={panelTitleStyle}>Help</h2>
+        <button
+          type="button"
+          onClick={() => setShowHelp(!showHelp)}
+          style={{
+            border: "none",
+            borderRadius: "999px",
+            padding: "6px 12px",
+            fontSize: "12px",
+            cursor: "pointer",
+            color: "#cbd5e1",
+            background: "rgba(15,23,42,0.55)",
+          }}
+        >
+          {showHelp ? "닫기" : "도움말"}
+        </button>
+      </div>
+      {showHelp && (
+        <div style={mutedStyle}>
+          <p style={{ ...mutedStyle, fontWeight: 600, fontSize: "14px", marginBottom: "8px" }}>System Garden 도움말</p>
+
+          <p style={{ ...mutedStyle, fontWeight: 600, marginTop: "12px" }}>기본 개념</p>
+          <ul style={{ margin: "4px 0", paddingLeft: "20px" }}>
+            <li>에이전트 조직도, 도구 연결, 미션보드 이슈를 토폴로지 그래프로 시각화</li>
+            <li>Health Card로 에이전트별 업무 상태 모니터링</li>
+            <li>Meta Question으로 조직 개선 포인트 제안</li>
+          </ul>
+
+          <p style={{ ...mutedStyle, fontWeight: 600, marginTop: "12px" }}>레이어 필터</p>
+          <ul style={{ margin: "4px 0", paddingLeft: "20px" }}>
+            <li><strong>Agent</strong>: 에이전트 조직도만</li>
+            <li><strong>Code</strong>: Tool Registry 도구 / KG 노드만</li>
+            <li><strong>All</strong>: 에이전트 + 코드/도구 + 이슈 전체</li>
+          </ul>
+
+          <p style={{ ...mutedStyle, fontWeight: 600, marginTop: "12px" }}>설정</p>
+          <ul style={{ margin: "4px 0", paddingLeft: "20px" }}>
+            <li><strong>Code Layer Source</strong>: knowledge-graph / tool-registry / none</li>
+            <li>Tool Registry 선택 시 등록된 도구가 노드로 표시</li>
+          </ul>
+        </div>
+      )}
+    </section>
   );
 }
 

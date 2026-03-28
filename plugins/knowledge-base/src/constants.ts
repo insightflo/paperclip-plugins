@@ -42,6 +42,7 @@ export const ACTION_KEYS = {
   kbCreate: DATA_KEYS.kbCreate,
   kbUpdate: DATA_KEYS.kbUpdate,
   kbDelete: DATA_KEYS.kbDelete,
+  kbRestore: "knowledge-base.restore",
   grantCreate: DATA_KEYS.grantCreate,
   grantDelete: DATA_KEYS.grantDelete,
 } as const;

@@ -29,6 +29,9 @@
   ],
   "author": "Paperclip",
   "license": "MIT",
+  "dependencies": {
+    "cytoscape": "^3.33.1"
+  },
   "devDependencies": {
     "@paperclipai/plugin-sdk": "^2026.318.0",
     "@rollup/plugin-node-resolve": "^16.0.1",

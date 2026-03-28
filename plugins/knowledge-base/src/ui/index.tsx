@@ -29,7 +29,10 @@ type KnowledgeBaseItem = {
   maxTokenBudget: number;
   createdAt: string;
   updatedAt: string;
+  __deleted?: boolean;
 };
+
+type StatusFilter = "active" | "archived";
 
 type KnowledgeBaseDetail = KnowledgeBaseItem & {
   staticConfig?: {
@@ -128,6 +131,11 @@ const buttonStyle: CSSProperties = {
   padding: "8px 12px",
 };
 
+const buttonDisabledStyle: CSSProperties = {
+  opacity: 0.65,
+  cursor: "not-allowed",
+};
+
 const inputStyle: CSSProperties = {
   width: "100%",
   border: "1px solid var(--border, #334155)",
@@ -142,6 +150,20 @@ const textareaStyle: CSSProperties = {
   resize: "vertical",
   lineHeight: 1.5,
 };
+
+const filterTabStyle = (isActive: boolean): CSSProperties => ({
+  padding: "6px 14px",
+  border: "1px solid var(--border, #334155)",
+  borderRadius: "6px",
+  background: isActive
+    ? "color-mix(in srgb, var(--foreground, #f8fafc) 14%, var(--card, #0f172a))"
+    : "var(--card, #0f172a)",
+  color: "var(--foreground, #f8fafc)",
+  cursor: "pointer",
+  fontSize: "12px",
+  fontWeight: isActive ? 700 : 500,
+  opacity: isActive ? 1 : 0.7,
+});
 
 function hostPath(companyPrefix: string | null | undefined, suffix: string): string {
   return companyPrefix ? `/${companyPrefix}${suffix}` : suffix;
@@ -171,6 +193,7 @@ export function KnowledgeBasePage(props: PluginPageProps): JSX.Element {
   const [selectedKbId, setSelectedKbId] = useState<string>("");
   const [statusMessage, setStatusMessage] = useState<string>("");
   const [errorMessage, setErrorMessage] = useState<string>("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
 
   const [createName, setCreateName] = useState("");
   const [createType, setCreateType] = useState<"static" | "rag" | "ontology">("static");
@@ -184,6 +207,7 @@ export function KnowledgeBasePage(props: PluginPageProps): JSX.Element {
 
   const [grantAgentName, setGrantAgentName] = useState("");
   const [grantKbName, setGrantKbName] = useState("");
+  const [isRefreshing, setIsRefreshing] = useState(false);
 
   const overview = usePluginData<OverviewData>(DATA_KEYS.overview, {
     companyId,
@@ -198,12 +222,23 @@ export function KnowledgeBasePage(props: PluginPageProps): JSX.Element {
   const createKnowledgeBase = usePluginAction(ACTION_KEYS.kbCreate);
   const updateKnowledgeBase = usePluginAction(ACTION_KEYS.kbUpdate);
   const deleteKnowledgeBase = usePluginAction(ACTION_KEYS.kbDelete);
+  const restoreKnowledgeBase = usePluginAction(ACTION_KEYS.kbRestore);
   const createGrant = usePluginAction(ACTION_KEYS.grantCreate);
   const deleteGrant = usePluginAction(ACTION_KEYS.grantDelete);
 
-  const knowledgeBases = overview.data?.knowledgeBases ?? [];
+  const allKnowledgeBases = overview.data?.knowledgeBases ?? [];
   const grants = overview.data?.grants ?? [];
   const agents = overview.data?.agents ?? [];
+
+  const activeKnowledgeBases = useMemo(
+    () => allKnowledgeBases.filter((kb) => !kb.__deleted),
+    [allKnowledgeBases],
+  );
+  const archivedKnowledgeBases = useMemo(
+    () => allKnowledgeBases.filter((kb) => kb.__deleted === true),
+    [allKnowledgeBases],
+  );
+  const knowledgeBases = statusFilter === "active" ? activeKnowledgeBases : archivedKnowledgeBases;
 
   useEffect(() => {
     if (!selectedKbId && knowledgeBases.length > 0) {
@@ -256,9 +291,17 @@ export function KnowledgeBasePage(props: PluginPageProps): JSX.Element {
   );
 
   async function refreshOverview() {
-    setRefreshNonce((value) => value + 1);
-    await overview.refresh();
+    if (isRefreshing) return;
+    setIsRefreshing(true);
+    try {
+      setRefreshNonce((value) => value + 1);
+      await overview.refresh();
+    } finally {
+      setIsRefreshing(false);
+    }
   }
+
+  const refreshButtonLabel = isRefreshing ? "갱신 중..." : "\u21BB Refresh";
 
   async function onCreateKnowledgeBase(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -331,7 +374,28 @@ export function KnowledgeBasePage(props: PluginPageProps): JSX.Element {
       });
 
       await refreshOverview();
-      setStatusMessage("Knowledge Base를 삭제했습니다.");
+      setStatusMessage("Knowledge Base를 보관했습니다.");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : String(error));
+    }
+  }
+
+  async function onRestoreSelected() {
+    if (!selectedKnowledgeBase) {
+      return;
+    }
+
+    setStatusMessage("");
+    setErrorMessage("");
+
+    try {
+      await restoreKnowledgeBase({
+        companyId,
+        id: selectedKnowledgeBase.id,
+      });
+
+      await refreshOverview();
+      setStatusMessage("Knowledge Base를 복원했습니다.");
     } catch (error) {
       setErrorMessage(error instanceof Error ? error.message : String(error));
     }
@@ -393,15 +457,33 @@ export function KnowledgeBasePage(props: PluginPageProps): JSX.Element {
 
   return (
     <div data-plugin-id={PLUGIN_ID} style={pageStyle}>
-      <h1 style={titleStyle}>Knowledge Base</h1>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "12px" }}>
+        <h1 style={titleStyle}>Knowledge Base</h1>
+        <button
+          type="button"
+          onClick={() => { void refreshOverview(); }}
+          disabled={isRefreshing}
+          style={isRefreshing ? { ...buttonStyle, ...buttonDisabledStyle } : buttonStyle}
+        >
+          {refreshButtonLabel}
+        </button>
+      </div>
 
       {statusMessage ? <p style={{ ...mutedStyle, color: "#065f46" }}>{statusMessage}</p> : null}
       {errorMessage ? <p style={{ ...mutedStyle, color: "#b91c1c" }}>{errorMessage}</p> : null}
 
       <section style={sectionStyle}>
         <h2 style={sectionTitleStyle}>KB 목록</h2>
+        <div style={{ display: "flex", gap: "6px" }}>
+          <button type="button" style={filterTabStyle(statusFilter === "active")} onClick={() => setStatusFilter("active")}>
+            활성 ({activeKnowledgeBases.length})
+          </button>
+          <button type="button" style={filterTabStyle(statusFilter === "archived")} onClick={() => setStatusFilter("archived")}>
+            보관 ({archivedKnowledgeBases.length})
+          </button>
+        </div>
         {knowledgeBases.length === 0 ? (
-          <p style={mutedStyle}>등록된 Knowledge Base가 없습니다.</p>
+          <p style={mutedStyle}>{statusFilter === "active" ? "등록된 Knowledge Base가 없습니다." : "보관된 Knowledge Base가 없습니다."}</p>
         ) : (
           <table style={tableStyle}>
             <thead>
@@ -542,14 +624,26 @@ export function KnowledgeBasePage(props: PluginPageProps): JSX.Element {
             )}
 
             <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
-              <button type="button" style={buttonStyle} onClick={() => void onSaveDetail()}>저장</button>
-              <button
-                type="button"
-                style={{ ...buttonStyle, borderColor: "#fecaca", color: "#b91c1c" }}
-                onClick={() => void onDeleteSelected()}
-              >
-                삭제
-              </button>
+              {statusFilter === "active" ? (
+                <>
+                  <button type="button" style={buttonStyle} onClick={() => void onSaveDetail()}>저장</button>
+                  <button
+                    type="button"
+                    style={{ ...buttonStyle, borderColor: "#fecaca", color: "#b91c1c" }}
+                    onClick={() => void onDeleteSelected()}
+                  >
+                    보관
+                  </button>
+                </>
+              ) : (
+                <button
+                  type="button"
+                  style={buttonStyle}
+                  onClick={() => void onRestoreSelected()}
+                >
+                  복원
+                </button>
+              )}
             </div>
           </div>
         )}
@@ -637,7 +731,42 @@ export function KnowledgeBasePage(props: PluginPageProps): JSX.Element {
           </div>
         ) : null}
       </section>
+
+      <KnowledgeBaseHelpSection />
     </div>
+  );
+}
+
+function KnowledgeBaseHelpSection(): JSX.Element {
+  const [showHelp, setShowHelp] = useState(false);
+
+  return (
+    <section style={sectionStyle}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <h2 style={sectionTitleStyle}>Help</h2>
+        <button type="button" style={buttonStyle} onClick={() => setShowHelp(!showHelp)}>
+          {showHelp ? "닫기" : "도움말"}
+        </button>
+      </div>
+      {showHelp && (
+        <div style={mutedStyle}>
+          <p style={{ ...mutedStyle, fontWeight: 600, fontSize: "15px", marginBottom: "8px" }}>Knowledge Base 도움말</p>
+
+          <p style={{ ...mutedStyle, fontWeight: 600, marginTop: "12px" }}>기본 개념</p>
+          <ul style={{ margin: "4px 0", paddingLeft: "20px" }}>
+            <li><strong>Article</strong>: 업무 지식/규정/절차를 담은 문서</li>
+            <li><strong>Tag</strong>: 문서 분류를 위한 태그</li>
+          </ul>
+
+          <p style={{ ...mutedStyle, fontWeight: 600, marginTop: "12px" }}>사용법</p>
+          <ol style={{ margin: "4px 0", paddingLeft: "20px" }}>
+            <li>새 문서 작성: &quot;KB 저장&quot; 버튼으로 생성</li>
+            <li>태그로 문서 필터링 가능</li>
+            <li>에이전트가 업무 중 참조할 수 있는 지식 저장소</li>
+          </ol>
+        </div>
+      )}
+    </section>
   );
 }
 

@@ -19,6 +19,7 @@ const manifest: PaperclipPluginManifestV1 = {
   categories: ["automation"],
   capabilities: [
     "events.subscribe",
+    "events.emit",
     "issues.read",
     "issues.create",
     "issues.update",

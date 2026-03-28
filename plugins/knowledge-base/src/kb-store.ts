@@ -229,7 +229,47 @@ async function listByType(
 
     const filtered = listed
       .filter((record: PluginEntityRecord) => record.entityType === entityType)
-      .filter((record: PluginEntityRecord) => asRecord(record.data).__deleted !== true);
+      .filter((record: PluginEntityRecord) => asRecord(record.data).__deleted !== true)
+      .filter((record: PluginEntityRecord) => {
+        const raw = asRecord(record.data).companyId;
+        const dataCompanyId = typeof raw === "string" ? raw.trim() : "";
+        return !dataCompanyId || dataCompanyId === companyId;
+      });
+    all.push(...filtered);
+
+    if (listed.length < pageSize) {
+      return all;
+    }
+
+    offset += listed.length;
+  }
+}
+
+async function listAllByType(
+  ctx: PluginContext,
+  entityType: string,
+  companyId: string,
+): Promise<PluginEntityRecord[]> {
+  const pageSize = 500;
+  let offset = 0;
+  const all: PluginEntityRecord[] = [];
+
+  while (true) {
+    const listed = await entities(ctx).list({
+      entityType,
+      scopeKind: "company",
+      scopeId: companyId,
+      limit: pageSize,
+      offset,
+    } as EntityQuery);
+
+    const filtered = listed
+      .filter((record: PluginEntityRecord) => record.entityType === entityType)
+      .filter((record: PluginEntityRecord) => {
+        const raw = asRecord(record.data).companyId;
+        const dataCompanyId = typeof raw === "string" ? raw.trim() : "";
+        return !dataCompanyId || dataCompanyId === companyId;
+      });
     all.push(...filtered);
 
     if (listed.length < pageSize) {
@@ -383,6 +423,56 @@ export async function listKnowledgeBases(
   return listed
     .map(toKnowledgeBaseRecord)
     .sort((left, right) => left.data.name.localeCompare(right.data.name));
+}
+
+export async function listAllKnowledgeBases(
+  ctx: PluginContext,
+  companyId: string,
+): Promise<KnowledgeBaseRecord[]> {
+  const listed = await listAllByType(ctx, ENTITY_TYPES.knowledgeBase, companyId);
+
+  return listed
+    .map(toKnowledgeBaseRecord)
+    .sort((left, right) => left.data.name.localeCompare(right.data.name));
+}
+
+export async function restoreKnowledgeBase(
+  ctx: PluginContext,
+  companyId: string,
+  kbNameOrId: string,
+): Promise<KnowledgeBaseRecord> {
+  const trimmed = asNonEmptyString(kbNameOrId);
+  if (!trimmed) {
+    throw new Error("id or name is required for restore");
+  }
+
+  const allRecords = await listAllByType(ctx, ENTITY_TYPES.knowledgeBase, companyId);
+
+  const target = allRecords.find(
+    (record: PluginEntityRecord) => record.id === trimmed || record.externalId === trimmed,
+  );
+
+  if (!target) {
+    throw new Error(`Knowledge base not found: ${trimmed}`);
+  }
+
+  const currentData = asRecord(target.data);
+  const { __deleted, deletedAt, ...cleanData } = currentData;
+
+  const updated = await entities(ctx).upsert({
+    entityType: target.entityType,
+    scopeKind: toScopeKind(target.scopeKind),
+    scopeId: target.scopeId ?? undefined,
+    externalId: target.externalId ?? `${target.entityType}:${target.id}`,
+    title: target.title ?? undefined,
+    status: "active",
+    data: {
+      ...cleanData,
+      updatedAt: new Date().toISOString(),
+    },
+  });
+
+  return toKnowledgeBaseRecord(updated);
 }
 
 export async function getKnowledgeBaseByName(

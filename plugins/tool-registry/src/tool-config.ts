@@ -31,6 +31,7 @@ export interface ToolConfig {
   env?: Record<string, string>;
   requiresApproval: boolean;
   description?: string;
+  instructions?: string;
   argsSchema?: JsonRecord;
   createdBy?: string;
   createdAt: string;
@@ -136,6 +137,7 @@ function toToolConfigData(input: Partial<ToolConfig>, nowIso: string): ToolConfi
     env: normalizeEnv(input.env),
     requiresApproval: normalizeBoolean(input.requiresApproval, false),
     description: asNonEmptyString(input.description) || undefined,
+    instructions: asNonEmptyString(input.instructions) || undefined,
     argsSchema: normalizeArgsSchema(input.argsSchema),
     createdBy: asNonEmptyString(input.createdBy) || undefined,
     createdAt: asNonEmptyString(input.createdAt) || nowIso,
@@ -184,7 +186,45 @@ async function listByType(
 
     const filtered = listed
       .filter((record: PluginEntityRecord) => record.entityType === entityType)
-      .filter((record: PluginEntityRecord) => asRecord(record.data).__deleted !== true);
+      .filter((record: PluginEntityRecord) => asRecord(record.data).__deleted !== true)
+      .filter((record: PluginEntityRecord) => {
+        const sid = typeof record.scopeId === "string" ? record.scopeId.trim() : "";
+        return !sid || sid === companyId;
+      });
+    all.push(...filtered);
+
+    if (listed.length < pageSize) {
+      return all;
+    }
+
+    offset += listed.length;
+  }
+}
+
+async function listAllByType(
+  ctx: PluginContext,
+  entityType: string,
+  companyId: string,
+): Promise<PluginEntityRecord[]> {
+  const pageSize = 500;
+  let offset = 0;
+  const all: PluginEntityRecord[] = [];
+
+  while (true) {
+    const listed = await entities(ctx).list({
+      entityType,
+      scopeKind: "company",
+      scopeId: companyId,
+      limit: pageSize,
+      offset,
+    } as EntityQuery);
+
+    const filtered = listed
+      .filter((record: PluginEntityRecord) => record.entityType === entityType)
+      .filter((record: PluginEntityRecord) => {
+        const sid = typeof record.scopeId === "string" ? record.scopeId.trim() : "";
+        return !sid || sid === companyId;
+      });
     all.push(...filtered);
 
     if (listed.length < pageSize) {
@@ -394,6 +434,50 @@ export async function listTools(
   return records
     .map((record) => toToolConfigRecord(record))
     .sort((left, right) => left.data.name.localeCompare(right.data.name));
+}
+
+export async function listAllTools(
+  ctx: PluginContext,
+  companyId: string,
+): Promise<ToolConfigRecord[]> {
+  const records = await listAllByType(ctx, ENTITY_TYPES.toolConfig, companyId);
+  return records
+    .map((record) => toToolConfigRecord(record))
+    .sort((left, right) => left.data.name.localeCompare(right.data.name));
+}
+
+export async function restoreTool(
+  ctx: PluginContext,
+  companyId: string,
+  toolName: string,
+): Promise<ToolConfigRecord> {
+  const normalizedToolName = normalizeName(toolName, "toolName");
+  const allRecords = await listAllByType(ctx, ENTITY_TYPES.toolConfig, companyId);
+  const existing = allRecords.find(
+    (record: PluginEntityRecord) => record.externalId === normalizedToolName,
+  );
+
+  if (!existing) {
+    throw new Error(`Tool not found: ${normalizedToolName}`);
+  }
+
+  const currentData = asRecord(existing.data);
+  const { __deleted, deletedAt, ...cleanData } = currentData;
+
+  const updated = await entities(ctx).upsert({
+    entityType: existing.entityType,
+    scopeKind: toScopeKind(existing.scopeKind),
+    scopeId: existing.scopeId ?? undefined,
+    externalId: existing.externalId ?? `${existing.entityType}:${existing.id}`,
+    title: existing.title ?? undefined,
+    status: "active",
+    data: {
+      ...cleanData,
+      updatedAt: new Date().toISOString(),
+    },
+  });
+
+  return toToolConfigRecord(updated);
 }
 
 export async function grantTool(

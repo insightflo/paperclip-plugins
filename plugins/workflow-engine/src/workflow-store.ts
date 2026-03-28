@@ -11,7 +11,16 @@ export interface WorkflowDefinition extends Record<string, unknown> {
   status: "active" | "paused" | "archived";
   steps: WorkflowStep[];
   timeoutMinutes?: number;
+  maxDailyRuns?: number;
   maxConcurrentRuns?: number;
+  triggerLabels?: string[];
+  labelIds?: string[];
+  schedule?: string;
+  timezone?: string;
+  deadlineTime?: string;
+  lastScheduledRunAt?: string;
+  projectId?: string;
+  goalId?: string;
 }
 
 export interface WorkflowRun extends Record<string, unknown> {
@@ -20,6 +29,8 @@ export interface WorkflowRun extends Record<string, unknown> {
   companyId: string;
   status: "running" | "completed" | "failed" | "aborted" | "timed-out";
   parentIssueId?: string;
+  runLabel?: string;
+  triggerSource?: "schedule" | "manual" | "label" | "api";
   startedAt: string;
   completedAt?: string;
 }
@@ -77,10 +88,17 @@ function mergeEntityData<T extends object>(
   record: PluginEntityRecord,
   updates: Partial<T>,
 ): T {
-  return {
+  const merged = {
     ...(record.data as T),
     ...updates,
   };
+  // Remove keys explicitly set to undefined so cleared fields are stored as absent
+  for (const key of Object.keys(merged) as (keyof typeof merged)[]) {
+    if (merged[key] === undefined) {
+      delete merged[key];
+    }
+  }
+  return merged;
 }
 
 async function getEntityByType<T>(
@@ -127,6 +145,33 @@ async function requireEntityByType<T>(
   }
 
   return record;
+}
+
+async function listAllCompanyStepRuns(
+  ctx: PluginContext,
+  companyId: string,
+): Promise<PluginEntityRecord[]> {
+  const pageSize = 200;
+  const stepRuns: PluginEntityRecord[] = [];
+  let offset = 0;
+
+  while (true) {
+    const page = await ctx.entities.list({
+      entityType: ENTITY_TYPES.workflowStepRun,
+      scopeKind: "company",
+      scopeId: companyId,
+      limit: pageSize,
+      offset,
+    });
+
+    stepRuns.push(...page);
+
+    if (page.length < pageSize) {
+      return stepRuns;
+    }
+
+    offset += page.length;
+  }
 }
 
 export async function createWorkflowDefinition(
@@ -225,6 +270,23 @@ export async function listActiveRuns(
   return runs.filter((run: PluginEntityRecord) => run.status === "running");
 }
 
+export async function listWorkflowRunsByWorkflowId(
+  ctx: PluginContext,
+  companyId: string,
+  workflowId: string,
+): Promise<PluginEntityRecord[]> {
+  const runs = await ctx.entities.list({
+    entityType: ENTITY_TYPES.workflowRun,
+    scopeKind: "company",
+    scopeId: companyId,
+  });
+
+  return runs.filter(
+    (run: PluginEntityRecord) =>
+      (run.data as Partial<WorkflowRun>).workflowId === workflowId,
+  );
+}
+
 export async function updateWorkflowRun(
   ctx: PluginContext,
   id: string,
@@ -281,11 +343,7 @@ export async function listStepRuns(
   runId: string,
   companyId: string,
 ): Promise<PluginEntityRecord[]> {
-  const stepRuns = await ctx.entities.list({
-    entityType: ENTITY_TYPES.workflowStepRun,
-    scopeKind: "company",
-    scopeId: companyId,
-  });
+  const stepRuns = await listAllCompanyStepRuns(ctx, companyId);
 
   return stepRuns.filter(
     (stepRun: PluginEntityRecord) =>
@@ -298,11 +356,7 @@ export async function findStepRunByIssueId(
   issueId: string,
   companyId: string,
 ): Promise<PluginEntityRecord | null> {
-  const stepRuns = await ctx.entities.list({
-    entityType: ENTITY_TYPES.workflowStepRun,
-    scopeKind: "company",
-    scopeId: companyId,
-  });
+  const stepRuns = await listAllCompanyStepRuns(ctx, companyId);
 
   return (
     stepRuns.find(

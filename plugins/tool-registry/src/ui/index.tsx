@@ -14,6 +14,17 @@ import {
 } from "react";
 import { ACTION_KEYS, DATA_KEYS } from "../constants.js";
 
+// Fix: prevent parent window from capturing arrow keys in textareas
+if (typeof window !== "undefined") {
+  window.addEventListener("keydown", (e) => {
+    const target = e.target as HTMLElement;
+    if (target?.tagName === "TEXTAREA" && (e.key === "ArrowUp" || e.key === "ArrowDown")) {
+      e.stopPropagation();
+    }
+  }, true);
+}
+
+
 type ToolConfig = {
   name: string;
   command: string;
@@ -21,10 +32,12 @@ type ToolConfig = {
   env?: Record<string, string>;
   requiresApproval: boolean;
   description?: string;
+  instructions?: string;
   argsSchema?: Record<string, unknown>;
   createdBy?: string;
   createdAt: string;
   updatedAt: string;
+  __deleted?: boolean;
 };
 
 type ToolConfigRecord = {
@@ -78,6 +91,7 @@ type ToolFormState = {
   command: string;
   workingDirectory: string;
   description: string;
+  instructions: string;
   requiresApproval: boolean;
 };
 
@@ -217,6 +231,22 @@ function truncate(value: string | undefined, max = 120): string {
   return `${value.slice(0, max)}…`;
 }
 
+type StatusFilter = "active" | "archived";
+
+const filterTabStyle = (isActive: boolean): CSSProperties => ({
+  padding: "6px 14px",
+  border: "1px solid var(--border, #334155)",
+  borderRadius: "6px",
+  background: isActive
+    ? "color-mix(in srgb, var(--foreground, #f8fafc) 14%, var(--card, #0f172a))"
+    : "var(--card, #0f172a)",
+  color: "var(--foreground, #f8fafc)",
+  cursor: "pointer",
+  fontSize: "12px",
+  fontWeight: isActive ? 700 : 500,
+  opacity: isActive ? 1 : 0.7,
+});
+
 function ToolSection({
   data,
   companyId,
@@ -230,12 +260,25 @@ function ToolSection({
   const createToolAction = usePluginAction(ACTION_KEYS.createTool);
   const updateToolAction = usePluginAction(ACTION_KEYS.updateTool);
   const deleteToolAction = usePluginAction(ACTION_KEYS.deleteTool);
+  const restoreToolAction = usePluginAction(ACTION_KEYS.restoreTool);
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("active");
+
+  const activeTools = useMemo(
+    () => data.tools.filter((tool) => !tool.data.__deleted),
+    [data.tools],
+  );
+  const archivedTools = useMemo(
+    () => data.tools.filter((tool) => tool.data.__deleted === true),
+    [data.tools],
+  );
+  const filteredTools = statusFilter === "active" ? activeTools : archivedTools;
 
   const [form, setForm] = useState<ToolFormState>({
     name: "",
     command: "",
     workingDirectory: "",
     description: "",
+    instructions: "",
     requiresApproval: false,
   });
 
@@ -249,13 +292,14 @@ function ToolSection({
         command: form.command,
         workingDirectory: form.workingDirectory,
         description: form.description,
+        instructions: form.instructions,
         requiresApproval: form.requiresApproval,
       },
       actorName: "tool-registry-ui",
     });
 
     toast({ title: `Tool created: ${form.name}`, tone: "success" });
-    setForm({ name: "", command: "", workingDirectory: "", description: "", requiresApproval: false });
+    setForm({ name: "", command: "", workingDirectory: "", description: "", instructions: "", requiresApproval: false });
     refresh();
   }
 
@@ -277,7 +321,13 @@ function ToolSection({
 
   async function onDeleteTool(toolName: string): Promise<void> {
     await deleteToolAction({ companyId, toolName });
-    toast({ title: `Tool deleted: ${toolName}`, tone: "warn" });
+    toast({ title: `Tool archived: ${toolName}`, tone: "warn" });
+    refresh();
+  }
+
+  async function onRestoreTool(toolName: string): Promise<void> {
+    await restoreToolAction({ companyId, toolName });
+    toast({ title: `Tool restored: ${toolName}`, tone: "success" });
     refresh();
   }
 
@@ -285,9 +335,19 @@ function ToolSection({
     <section style={cardStyle}>
       <div style={headerRowStyle}>
         <h2 style={sectionTitleStyle}>Tool Config</h2>
-        <p style={mutedTextStyle}>{data.tools.length} tools</p>
+        <p style={mutedTextStyle}>{activeTools.length} active / {archivedTools.length} archived</p>
       </div>
 
+      <div style={{ display: "flex", gap: "6px" }}>
+        <button type="button" style={filterTabStyle(statusFilter === "active")} onClick={() => setStatusFilter("active")}>
+          활성 ({activeTools.length})
+        </button>
+        <button type="button" style={filterTabStyle(statusFilter === "archived")} onClick={() => setStatusFilter("archived")}>
+          보관 ({archivedTools.length})
+        </button>
+      </div>
+
+      {statusFilter === "active" && (
       <form onSubmit={(event) => void onCreateTool(event)} style={{ display: "grid", gap: "10px" }}>
         <div style={gridCols2Style}>
           <input
@@ -317,15 +377,13 @@ function ToolSection({
             onChange={(event) => setForm((prev) => ({ ...prev, description: event.target.value }))}
           />
         </div>
-
-        <label style={{ display: "flex", gap: "8px", alignItems: "center", fontSize: "13px" }}>
-          <input
-            type="checkbox"
-            checked={form.requiresApproval}
-            onChange={(event) => setForm((prev) => ({ ...prev, requiresApproval: event.target.checked }))}
-          />
-          requiresApproval
-        </label>
+        <textarea
+          placeholder="Instructions (에이전트에게 전달할 사용법)"
+          style={{ ...inputStyle, minHeight: "150px", resize: "vertical", width: "100%", gridColumn: "1 / -1" }}
+          value={form.instructions}
+          onChange={(event) => setForm((prev) => ({ ...prev, instructions: event.target.value }))}
+          rows={3}
+        />
 
         <div>
           <button style={primaryButtonStyle} type="submit">
@@ -333,8 +391,20 @@ function ToolSection({
           </button>
         </div>
       </form>
+      )}
 
-      <table style={tableStyle}>
+      <ToolTable
+        tools={filteredTools}
+        companyId={companyId}
+        updateToolAction={updateToolAction}
+        onDeleteTool={onDeleteTool}
+        onRestoreTool={onRestoreTool}
+        refresh={refresh}
+        toast={toast}
+        statusFilter={statusFilter}
+      />
+
+      {false && <table style={tableStyle}>
         <thead>
           <tr>
             <th style={thStyle}>Name</th>
@@ -377,8 +447,113 @@ function ToolSection({
             </tr>
           ) : null}
         </tbody>
-      </table>
+      </table>}
     </section>
+  );
+}
+
+function ToolTable({
+  tools, companyId, updateToolAction, onDeleteTool, onRestoreTool, refresh, toast, statusFilter,
+}: {
+  tools: ToolConfigRecord[];
+  companyId: string;
+  updateToolAction: ReturnType<typeof usePluginAction>;
+  onDeleteTool: (name: string) => Promise<void>;
+  onRestoreTool: (name: string) => Promise<void>;
+  refresh: () => void;
+  toast: ReturnType<typeof usePluginToast>;
+  statusFilter: StatusFilter;
+}) {
+  const [editingName, setEditingName] = useState<string | null>(null);
+  const [editForm, setEditForm] = useState({ command: "", workingDirectory: "", description: "", instructions: "" });
+
+  function beginEdit(tool: ToolConfigRecord) {
+    setEditingName(tool.data.name);
+    setEditForm({
+      command: tool.data.command,
+      workingDirectory: tool.data.workingDirectory || "",
+      description: tool.data.description || "",
+      instructions: tool.data.instructions || "",
+    });
+  }
+
+  async function saveEdit(toolName: string) {
+    await updateToolAction({
+      companyId,
+      toolName,
+      patch: {
+        command: editForm.command,
+        workingDirectory: editForm.workingDirectory || undefined,
+        description: editForm.description || undefined,
+        instructions: editForm.instructions || undefined,
+      },
+    });
+    toast({ title: `Tool updated: ${toolName}`, tone: "success" });
+    setEditingName(null);
+    refresh();
+  }
+
+  return (
+    <table style={tableStyle}>
+      <thead>
+        <tr>
+          <th style={thStyle}>Name</th>
+          <th style={thStyle}>Command</th>
+          <th style={thStyle}>Actions</th>
+        </tr>
+      </thead>
+      <tbody>
+        {tools.map((tool) => {
+          const isEditing = editingName === tool.data.name;
+          return (
+            <tr key={tool.id}>
+              {isEditing ? (
+                <td style={tdStyle} colSpan={3}>
+                  <div style={{ display: "grid", gap: "8px" }}>
+                    <strong>{tool.data.name}</strong>
+                    <input style={inputStyle} value={editForm.command} placeholder="Command" onChange={(e) => setEditForm((p) => ({ ...p, command: e.target.value }))} />
+                    <input style={inputStyle} value={editForm.workingDirectory} placeholder="Working directory" onChange={(e) => setEditForm((p) => ({ ...p, workingDirectory: e.target.value }))} />
+                    <input style={inputStyle} value={editForm.description} placeholder="Description" onChange={(e) => setEditForm((p) => ({ ...p, description: e.target.value }))} />
+                    <textarea style={{ ...inputStyle, minHeight: "180px", resize: "vertical", fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace", fontSize: "12px" }} value={editForm.instructions} placeholder="Instructions (에이전트 사용법)" onChange={(e) => setEditForm((p) => ({ ...p, instructions: e.target.value }))} rows={5} />
+                    <div style={{ display: "flex", gap: "6px" }}>
+                      <button type="button" style={primaryButtonStyle} onClick={() => void saveEdit(tool.data.name)}>Save</button>
+                      <button type="button" style={buttonStyle} onClick={() => setEditingName(null)}>Cancel</button>
+                    </div>
+                  </div>
+                </td>
+              ) : (
+                <>
+                  <td style={tdStyle}>
+                    <strong>{tool.data.name}</strong>
+                    <div style={mutedTextStyle}>{tool.data.description || "-"}</div>
+                    {tool.data.instructions && <div style={{ ...mutedTextStyle, fontSize: "11px", marginTop: "4px" }}>📋 instructions 있음</div>}
+                  </td>
+                  <td style={tdStyle}>
+                    <code>{tool.data.command}</code>
+                    <div style={mutedTextStyle}>{tool.data.workingDirectory || "cwd: default"}</div>
+                  </td>
+                  <td style={tdStyle}>
+                    <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                      {statusFilter === "active" ? (
+                        <>
+                          <button type="button" style={primaryButtonStyle} onClick={() => beginEdit(tool)}>Edit</button>
+                          <button type="button" style={buttonStyle} onClick={() => void onDeleteTool(tool.data.name)}>보관</button>
+                        </>
+                      ) : (
+                        <button type="button" style={primaryButtonStyle} onClick={() => void onRestoreTool(tool.data.name)}>복원</button>
+                      )}
+                    </div>
+                  </td>
+                </>
+              )}
+            </tr>
+          );
+        })}
+        {tools.length === 0 && (
+          <tr><td colSpan={3} style={tdStyle}><p style={mutedTextStyle}>No tools configured yet.</p></td></tr>
+        )}
+      </tbody>
+    </table>
   );
 }
 
@@ -564,6 +739,58 @@ function LogsSection({ data }: { data: PageData }): JSX.Element {
   );
 }
 
+function HelpSection(): JSX.Element {
+  const [showHelp, setShowHelp] = useState(false);
+
+  return (
+    <section style={cardStyle}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <h2 style={sectionTitleStyle}>Help</h2>
+        <button type="button" style={buttonStyle} onClick={() => setShowHelp(!showHelp)}>
+          {showHelp ? "닫기" : "도움말"}
+        </button>
+      </div>
+      {showHelp && (
+        <div style={mutedTextStyle}>
+          <p style={{ ...mutedTextStyle, fontWeight: 600, fontSize: "15px", marginBottom: "8px" }}>Tool Registry 도움말</p>
+
+          <p style={{ ...mutedTextStyle, fontWeight: 600, marginTop: "12px" }}>기본 개념</p>
+          <ul style={{ margin: "4px 0", paddingLeft: "20px" }}>
+            <li><strong>Tool</strong>: CLI 명령어를 래핑한 실행 가능한 도구</li>
+            <li><strong>Grant</strong>: 에이전트별 도구 사용 권한</li>
+            <li><strong>Instructions</strong>: 에이전트에게 전달되는 도구 사용법</li>
+          </ul>
+
+          <p style={{ ...mutedTextStyle, fontWeight: 600, marginTop: "12px" }}>도구 등록</p>
+          <ol style={{ margin: "4px 0", paddingLeft: "20px" }}>
+            <li><strong>Name</strong>: 고유 이름 (workflow에서 참조)</li>
+            <li><strong>Command</strong>: 실행할 CLI 명령어</li>
+            <li><strong>Working Directory</strong>: 실행 경로 (비워두면 기본값)</li>
+            <li><strong>Description</strong>: 도구 설명</li>
+            <li><strong>Instructions</strong>: 에이전트에게 전달할 상세 사용법
+              <ul style={{ margin: "2px 0", paddingLeft: "16px" }}>
+                <li>Workflow의 Agent step에서 tools에 이 도구를 지정하면 자동 전달</li>
+              </ul>
+            </li>
+          </ol>
+
+          <p style={{ ...mutedTextStyle, fontWeight: 600, marginTop: "12px" }}>Grant 관리</p>
+          <ul style={{ margin: "4px 0", paddingLeft: "20px" }}>
+            <li>에이전트 이름 + 도구 이름으로 사용 권한 부여</li>
+            <li>Grant가 없으면 에이전트가 직접 실행 불가</li>
+            <li>Workflow Engine의 Tool step은 Grant 없이 시스템으로 실행</li>
+          </ul>
+
+          <p style={{ ...mutedTextStyle, fontWeight: 600, marginTop: "12px" }}>실행 로그</p>
+          <ul style={{ margin: "4px 0", paddingLeft: "20px" }}>
+            <li>모든 도구 실행이 기록됨 (성공/실패/거부)</li>
+          </ul>
+        </div>
+      )}
+    </section>
+  );
+}
+
 export function ToolRegistryPage(props: PluginPageProps): JSX.Element {
   const hostContext = useHostContext();
   const toast = usePluginToast();
@@ -635,6 +862,7 @@ export function ToolRegistryPage(props: PluginPageProps): JSX.Element {
       <ToolSection data={data} companyId={companyId} refresh={refresh} />
       <GrantSection data={data} companyId={companyId} refresh={refresh} />
       <LogsSection data={data} />
+      <HelpSection />
     </main>
   );
 }

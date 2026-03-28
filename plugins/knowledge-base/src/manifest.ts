@@ -19,8 +19,26 @@ const manifest: PaperclipPluginManifestV1 = {
     "events.subscribe",
     "agents.read",
     "issue.comments.create",
+    "plugin.state.read",
+    "plugin.state.write",
+    "agent.tools.register",
     "ui.page.register",
     "ui.sidebar.register",
+  ],
+  tools: [
+    {
+      name: "kb-search",
+      displayName: "Knowledge Base Search",
+      description: "Search the company knowledge base for articles matching a query.",
+      parametersSchema: {
+        type: "object",
+        properties: {
+          query: { type: "string", description: "Search keyword or article name" },
+          kbName: { type: "string", description: "Specific KB name (optional)" },
+        },
+        required: ["query"],
+      },
+    },
   ],
   entrypoints: {
     worker: "./dist/worker.js",

@@ -44,9 +44,6 @@ def configure_logging(log_file: Path) -> logging.Logger:
 
 def load_project_env() -> None:
     path_prefix = [
-        "/Users/kwak/.pyenv/shims",
-        "/Users/kwak/.pyenv/bin",
-        "/Users/kwak/.local/bin",
         "/opt/homebrew/bin",
         "/usr/local/bin",
     ]

@@ -2,11 +2,16 @@ export interface WorkflowStep {
   id: string;
   title: string;
   dependsOn: string[];
+  type?: "agent" | "tool";
+  toolName?: string;
+  toolArgs?: Record<string, unknown>;
+  tools?: string[];
   sessionMode?: "fresh" | "reuse";
   onFailure?: "retry" | "skip" | "abort_workflow" | "escalate";
   escalateTo?: string;
   maxRetries?: number;
   triggerOn?: "normal" | "escalation";
+  timeoutSeconds?: number;
 }
 
 export interface DagValidationResult {

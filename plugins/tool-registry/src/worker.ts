@@ -1,4 +1,4 @@
-import { execFile } from "node:child_process";
+import { exec, execFile } from "node:child_process";
 import { promisify } from "node:util";
 import {
   definePlugin,
@@ -24,7 +24,9 @@ import {
   grantTool,
   isToolGrantedToAgent,
   listAgentGrants,
+  listAllTools,
   listTools,
+  restoreTool,
   revokeTool,
   updateTool,
   type JsonRecord,
@@ -639,6 +641,95 @@ async function executeRegisteredTool(
   }
 }
 
+async function executeToolForSystem(
+  ctx: PluginContext,
+  companyId: string,
+  toolName: string,
+  args: unknown,
+): Promise<{
+  success: boolean;
+  stdout: string;
+  stderr: string;
+  exitCode: number | null;
+  error?: string;
+}> {
+  const tool = await getToolByName(ctx, companyId, toolName);
+  if (!tool) {
+    return { success: false, stdout: "", stderr: "", exitCode: null, error: `Tool not found: ${toolName}` };
+  }
+
+  const commandParts = normalizeCommandParts(tool.data.command);
+  if (commandParts.length === 0) {
+    return { success: false, stdout: "", stderr: "", exitCode: null, error: `Empty command for tool: ${toolName}` };
+  }
+
+  const executable = commandParts[0];
+  const presetArgs = commandParts.slice(1);
+  const dynamicArgs = buildCommandArgs(args);
+  const allArgs = [...presetArgs, ...dynamicArgs];
+  const executionStart = new Date().toISOString();
+
+  try {
+    const shellCmd = [executable, ...allArgs].map((a) => /[\s"']/.test(a) ? `'${a.replace(/'/g, "'\\''")}'` : a).join(" ") + " < /dev/null";
+    const execShellAsync = promisify(exec);
+    const result = await execShellAsync(shellCmd, {
+      cwd: tool.data.workingDirectory || undefined,
+      env: { ...process.env, ...(tool.data.env ?? {}) },
+      encoding: "utf8",
+      maxBuffer: 4 * 1024 * 1024,
+      timeout: 15 * 60 * 1000,
+    });
+
+    const stdout = stringifyOutput(result.stdout);
+    const stderr = stringifyOutput(result.stderr);
+
+    await writeExecutionLog(ctx, {
+      timestamp: executionStart,
+      mode: "tool",
+      companyId,
+      projectId: "",
+      runId: "system",
+      agentId: "system",
+      agentName: "system",
+      toolName,
+      command: tool.data.command,
+      args,
+      exitCode: 0,
+      stdout,
+      stderr,
+      success: true,
+    });
+
+    return { success: true, stdout, stderr, exitCode: 0 };
+  } catch (error) {
+    const typed = error as Error & { code?: string | number; stdout?: unknown; stderr?: unknown };
+    const exitCode = typeof typed.code === "number" ? typed.code : null;
+    const stdout = stringifyOutput(typed.stdout);
+    const stderr = stringifyOutput(typed.stderr);
+    const message = typed.message || String(error);
+
+    await writeExecutionLog(ctx, {
+      timestamp: executionStart,
+      mode: "tool",
+      companyId,
+      projectId: "",
+      runId: "system",
+      agentId: "system",
+      agentName: "system",
+      toolName,
+      command: tool.data.command,
+      args,
+      exitCode,
+      stdout,
+      stderr,
+      reason: message,
+      success: false,
+    });
+
+    return { success: false, stdout, stderr, exitCode, error: message };
+  }
+}
+
 async function buildPageData(
   ctx: PluginContext,
   params: Record<string, unknown>,
@@ -649,7 +740,7 @@ async function buildPageData(
   const maxLogEntries = asNumber(params.maxLogEntries, DEFAULT_MAX_LOGS);
 
   const [tools, grants, logs, agents] = await Promise.all([
-    listTools(ctx, companyId),
+    listAllTools(ctx, companyId),
     listAgentGrants(ctx, companyId),
     listExecutionLogs(ctx, companyId, maxLogEntries),
     ctx.agents.list({ companyId, limit: 300, offset: 0 }),
@@ -658,7 +749,13 @@ async function buildPageData(
   return {
     companyId,
     companyName: company?.name ?? null,
-    tools,
+    tools: tools.map((tool) => ({
+      ...tool,
+      data: {
+        ...tool.data,
+        __deleted: tool.status === "deleted" || undefined,
+      },
+    })),
     grants,
     logs,
     agents: agents
@@ -769,6 +866,10 @@ async function registerActionHandlers(ctx: PluginContext): Promise<void> {
       patchData.argsSchema = patch.argsSchema;
     }
 
+    if (typeof patch.instructions === "string") {
+      patchData.instructions = asString(patch.instructions);
+    }
+
     const updated = await updateTool(ctx, companyId, toolName, {
       ...(patchData as Partial<{
         command: string;
@@ -776,6 +877,7 @@ async function registerActionHandlers(ctx: PluginContext): Promise<void> {
         env: Record<string, string>;
         requiresApproval: boolean;
         description: string;
+        instructions: string;
         argsSchema: Record<string, unknown>;
       }>),
     });
@@ -794,6 +896,16 @@ async function registerActionHandlers(ctx: PluginContext): Promise<void> {
       ok: true,
       toolName,
     };
+  });
+
+  ctx.actions.register(ACTION_KEYS.restoreTool, async (rawParams) => {
+    const params = asRecord(rawParams);
+    const companyId = await resolveCompanyId(ctx, params);
+    const toolName = asString(params.toolName);
+
+    const restored = await restoreTool(ctx, companyId, toolName);
+    await emitToolGraphUpdated(ctx, companyId);
+    return restored;
   });
 
   ctx.actions.register(ACTION_KEYS.grantTool, async (rawParams) => {
@@ -856,6 +968,66 @@ const plugin = definePlugin({
     ctx.events.on("agent.run.finished", async (event) => {
       await handleRunFinished(ctx, event);
     });
+
+    ctx.events.on(
+      "plugin.insightflo.workflow-engine.execute-tool-request" as Parameters<typeof ctx.events.on>[0],
+      async (event: PluginEvent) => {
+        const payload = asRecord(event.payload);
+        const toolName = asString(payload.toolName);
+        const companyId = asString(payload.companyId) || event.companyId;
+        const issueId = asString(payload.issueId);
+        const stepRunId = asString(payload.stepRunId);
+        const stepId = asString(payload.stepId);
+        const workflowRunId = asString(payload.workflowRunId);
+        const requestId = asString(payload.requestId);
+        const args = payload.args;
+
+        ctx.logger.info("Received tool execution request from Workflow Engine", {
+          requestId, toolName, companyId, stepId,
+        });
+
+        const result = await executeToolForSystem(ctx, companyId, toolName, args);
+
+        if (issueId) {
+          const status = result.success ? "completed" : "failed";
+          const output = result.stdout || result.stderr || result.error || "(no output)";
+          const truncated = output.length > 4000 ? output.slice(0, 4000) + "\n...(truncated)" : output;
+          const comment = [
+            `### Tool Execution: ${toolName} [${status}]`,
+            `Exit code: ${result.exitCode ?? "N/A"}`,
+            "```",
+            truncated,
+            "```",
+          ].join("\n");
+
+          try {
+            await ctx.issues.createComment(issueId, comment, companyId);
+          } catch (commentError) {
+            ctx.logger.warn("Failed to post tool result comment", {
+              issueId, error: commentError instanceof Error ? commentError.message : String(commentError),
+            });
+          }
+        }
+
+        await ctx.events.emit("tool-execution-result", companyId, {
+          requestId,
+          stepRunId,
+          stepId,
+          workflowRunId,
+          issueId,
+          success: result.success,
+          toolName,
+          stdout: result.stdout,
+          stderr: result.stderr,
+          exitCode: result.exitCode,
+          error: result.error,
+        });
+
+        ctx.logger.info("Tool execution completed, result emitted", {
+          requestId, toolName, success: result.success,
+        });
+      },
+    );
 
     ctx.logger.info("Tool Registry plugin worker initialized");
   },

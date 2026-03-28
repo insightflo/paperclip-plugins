@@ -18,7 +18,9 @@ import {
   grantKnowledgeBase,
   listAgentKbGrants,
   listAgentNames,
+  listAllKnowledgeBases,
   listKnowledgeBases,
+  restoreKnowledgeBase,
   revokeKnowledgeBaseGrant,
   upsertKnowledgeBase,
   type KnowledgeBaseRecord,
@@ -200,6 +202,7 @@ function toKnowledgeBaseListItem(record: KnowledgeBaseRecord): {
   maxTokenBudget: number;
   createdAt: string;
   updatedAt: string;
+  __deleted?: boolean;
 } {
   return {
     id: record.id,
@@ -209,6 +212,7 @@ function toKnowledgeBaseListItem(record: KnowledgeBaseRecord): {
     maxTokenBudget: record.data.maxTokenBudget,
     createdAt: record.data.createdAt,
     updatedAt: record.data.updatedAt,
+    __deleted: record.status === "deleted" || undefined,
   };
 }
 
@@ -502,18 +506,22 @@ async function registerKnowledgeBaseDataHandlers(ctx: PluginContext): Promise<vo
       };
     }
 
-    const overview = await getKnowledgeBaseOverview(ctx, companyId);
+    const [allKbs, grants, agents] = await Promise.all([
+      listAllKnowledgeBases(ctx, companyId),
+      listAgentKbGrants(ctx, companyId),
+      listAgentNames(ctx, companyId),
+    ]);
 
     return {
-      knowledgeBases: overview.knowledgeBases.map(toKnowledgeBaseListItem),
-      grants: overview.grants.map((grant) => ({
+      knowledgeBases: allKbs.map(toKnowledgeBaseListItem),
+      grants: grants.map((grant) => ({
         id: grant.id,
         agentName: grant.data.agentName,
         kbName: grant.data.kbName,
         grantedBy: grant.data.grantedBy,
         grantedAt: grant.data.grantedAt,
       })),
-      agents: overview.agents,
+      agents,
     };
   });
 
@@ -614,6 +622,19 @@ function registerKnowledgeBaseActionHandlers(ctx: PluginContext): void {
     return await deleteKnowledgeBaseFromParams(ctx, params);
   });
 
+  registerActionHandler(ctx, ACTION_KEYS.kbRestore, async (params) => {
+    const companyId = asString(params.companyId);
+    const id = asString(params.id);
+    const name = asString(params.name);
+
+    if (!companyId || (!id && !name)) {
+      throw new Error("knowledge-base.restore requires companyId and id or name");
+    }
+
+    const record = await restoreKnowledgeBase(ctx, companyId, id || name);
+    return toKnowledgeBaseDetail(record);
+  });
+
   registerActionHandler(ctx, ACTION_KEYS.grantCreate, async (params) => {
     return await createGrantFromParams(ctx, params);
   });
@@ -627,6 +648,74 @@ const plugin = definePlugin({
   async setup(ctx: PluginContext) {
     await registerKnowledgeBaseDataHandlers(ctx);
     registerKnowledgeBaseActionHandlers(ctx);
+
+    ctx.tools.register(
+      "kb-search",
+      {
+        displayName: "Knowledge Base Search",
+        description: "Search the company knowledge base for articles matching a query.",
+        parametersSchema: {
+          type: "object",
+          properties: {
+            query: { type: "string", description: "Search keyword or article name" },
+            kbName: { type: "string", description: "Specific KB name (optional)" },
+          },
+          required: ["query"],
+        },
+      },
+      async (params, runCtx) => {
+        const p = (params ?? {}) as Record<string, unknown>;
+        const query = typeof p.query === "string" ? p.query.trim() : "";
+        const kbName = typeof p.kbName === "string" ? p.kbName.trim() : "";
+
+        if (!query) return { error: "query is required" };
+
+        const agent = await ctx.agents.get(runCtx.agentId, runCtx.companyId);
+        const agentName = agent?.name ?? "";
+
+        if (kbName) {
+          const grants = await listAgentKbGrants(ctx, runCtx.companyId, { agentName });
+          if (!grants.some((g) => g.data.kbName === kbName)) {
+            return { error: `KB access denied: ${kbName}` };
+          }
+          const kb = await getKnowledgeBaseByName(ctx, runCtx.companyId, kbName);
+          if (!kb) return { error: `KB not found: ${kbName}` };
+          return {
+            content: `Found KB: ${kb.data.name}`,
+            data: { name: kb.data.name, type: kb.data.type, description: kb.data.description, content: kb.data.staticConfig?.content ?? "(no static content)" },
+          };
+        }
+
+        const grants = await listAgentKbGrants(ctx, runCtx.companyId, { agentName });
+        const grantedNames = new Set(grants.map((g) => g.data.kbName));
+        const allKbs = await listKnowledgeBases(ctx, runCtx.companyId);
+        const queryLower = query.toLowerCase();
+
+        const matches = allKbs
+          .filter((kb) => grantedNames.has(kb.data.name))
+          .filter((kb) =>
+            kb.data.name.toLowerCase().includes(queryLower) ||
+            (kb.data.description ?? "").toLowerCase().includes(queryLower) ||
+            (kb.data.staticConfig?.content ?? "").toLowerCase().includes(queryLower),
+          );
+
+        if (matches.length === 0) {
+          return { content: "No matching KB articles found", data: { results: [] } };
+        }
+
+        return {
+          content: `Found ${matches.length} KB article(s)`,
+          data: {
+            results: matches.map((kb) => ({
+              name: kb.data.name,
+              type: kb.data.type,
+              description: kb.data.description,
+              content: (kb.data.staticConfig?.content ?? "").slice(0, 3000),
+            })),
+          },
+        };
+      },
+    );
 
     ctx.events.on("agent.run.started", async (event: PluginEvent) => {
       await handleAgentRunStarted(ctx, event);

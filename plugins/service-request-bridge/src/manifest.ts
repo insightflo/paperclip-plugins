@@ -75,6 +75,11 @@ const manifest: PaperclipPluginManifestV1 = {
         title: "Auto-create mirror issue on label match",
         default: true,
       },
+      workflowTriggerLabel: {
+        type: "string",
+        title: "Workflow trigger label for mirror issues",
+        description: "Label to add to mirror issues to auto-start a workflow (e.g. wf:maintenance-triage)",
+      },
     },
   },
   ui: {
