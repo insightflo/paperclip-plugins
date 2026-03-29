@@ -51,6 +51,7 @@ export declare function getWorkflowRun(ctx: PluginContext, id: string): Promise<
     data: WorkflowRun;
 }) | null>;
 export declare function listActiveRuns(ctx: PluginContext, companyId: string): Promise<PluginEntityRecord[]>;
+export declare function listRecentRuns(ctx: PluginContext, companyId: string, limit?: number): Promise<PluginEntityRecord[]>;
 export declare function listWorkflowRunsByWorkflowId(ctx: PluginContext, companyId: string, workflowId: string): Promise<PluginEntityRecord[]>;
 export declare function updateWorkflowRun(ctx: PluginContext, id: string, updates: Partial<WorkflowRun>): Promise<PluginEntityRecord>;
 export declare function createStepRun(ctx: PluginContext, companyId: string, stepRun: WorkflowStepRun): Promise<PluginEntityRecord>;

@@ -1103,7 +1103,7 @@ function DefinitionsTable({
   ] });
 }
 function ActiveRunsTable({ activeRuns, onAbort }) {
-  if (activeRuns.length === 0) {
+  if (!Array.isArray(activeRuns) || activeRuns.length === 0) {
     return /* @__PURE__ */ jsx("p", { style: mutedTextStyle, children: "No active runs." });
   }
   return /* @__PURE__ */ jsxs("table", { style: tableStyle, children: [
@@ -1130,6 +1130,53 @@ function ActiveRunsTable({ activeRuns, onAbort }) {
       /* @__PURE__ */ jsx("td", { style: tdStyle, children: /* @__PURE__ */ jsx("span", { style: statusBadgeStyle(run.status), children: run.status }) }),
       /* @__PURE__ */ jsx("td", { style: tdStyle, children: formatDateTime(run.startedAt) }),
       /* @__PURE__ */ jsx("td", { style: tdStyle, children: /* @__PURE__ */ jsx("button", { type: "button", style: dangerButtonStyle, onClick: () => onAbort(run.id), children: "Abort" }) })
+    ] }, run.id)) })
+  ] });
+}
+function formatTriggerSource(triggerSource) {
+  switch ((triggerSource ?? "").trim().toLowerCase()) {
+    case "schedule":
+      return "cron";
+    case "label":
+      return "label";
+    case "api":
+      return "api";
+    case "manual":
+      return "manual";
+    default:
+      return triggerSource?.trim() || "unknown";
+  }
+}
+function RecentRunsTable({ recentRuns }) {
+  if (!Array.isArray(recentRuns) || recentRuns.length === 0) {
+    return /* @__PURE__ */ jsx("p", { style: mutedTextStyle, children: "No recent runs." });
+  }
+  return /* @__PURE__ */ jsxs("table", { style: tableStyle, children: [
+    /* @__PURE__ */ jsx("thead", { children: /* @__PURE__ */ jsxs("tr", { children: [
+      /* @__PURE__ */ jsx("th", { style: thStyle, children: "Workflow" }),
+      /* @__PURE__ */ jsx("th", { style: thStyle, children: "Run" }),
+      /* @__PURE__ */ jsx("th", { style: thStyle, children: "Trigger" }),
+      /* @__PURE__ */ jsx("th", { style: thStyle, children: "Issue" }),
+      /* @__PURE__ */ jsx("th", { style: thStyle, children: "Status" }),
+      /* @__PURE__ */ jsx("th", { style: thStyle, children: "Started" }),
+      /* @__PURE__ */ jsx("th", { style: thStyle, children: "Completed" })
+    ] }) }),
+    /* @__PURE__ */ jsx("tbody", { children: recentRuns.map((run) => /* @__PURE__ */ jsxs("tr", { children: [
+      /* @__PURE__ */ jsx("td", { style: tdStyle, children: run.workflowName }),
+      /* @__PURE__ */ jsx("td", { style: tdStyle, children: run.runLabel && /* @__PURE__ */ jsx("span", { style: { fontSize: "12px", fontWeight: 600 }, children: run.runLabel }) }),
+      /* @__PURE__ */ jsx("td", { style: tdStyle, children: formatTriggerSource(run.triggerSource) }),
+      /* @__PURE__ */ jsx("td", { style: tdStyle, children: run.parentIssueId ? /* @__PURE__ */ jsx(
+        "a",
+        {
+          href: `/issues/${run.parentIssueId}`,
+          style: { color: "var(--link, #60a5fa)", fontSize: "12px", textDecoration: "none" },
+          title: run.parentIssueId,
+          children: run.parentIssueIdentifier || run.parentIssueId.slice(0, 8)
+        }
+      ) : /* @__PURE__ */ jsx("span", { style: mutedTextStyle, children: "-" }) }),
+      /* @__PURE__ */ jsx("td", { style: tdStyle, children: /* @__PURE__ */ jsx("span", { style: statusBadgeStyle(run.status), children: run.status }) }),
+      /* @__PURE__ */ jsx("td", { style: tdStyle, children: formatDateTime(run.startedAt) }),
+      /* @__PURE__ */ jsx("td", { style: tdStyle, children: run.completedAt ? formatDateTime(run.completedAt) : "-" })
     ] }, run.id)) })
   ] });
 }
@@ -1357,7 +1404,13 @@ function WorkflowPage(props) {
       )
     ] });
   }
-  const data = overview.data ?? { workflows: [], activeRuns: [], projects: [], labels: [] };
+  const data = {
+    workflows: overview.data?.workflows ?? [],
+    activeRuns: overview.data?.activeRuns ?? [],
+    recentRuns: overview.data?.recentRuns ?? [],
+    projects: overview.data?.projects ?? [],
+    labels: overview.data?.labels ?? []
+  };
   return /* @__PURE__ */ jsxs("div", { "data-plugin-id": PLUGIN_ID, style: pageStyle, children: [
     /* @__PURE__ */ jsxs("div", { style: headerRowStyle, children: [
       /* @__PURE__ */ jsx("h1", { style: titleStyle, children: "Workflows" }),
@@ -1627,6 +1680,27 @@ function WorkflowPage(props) {
       } })
     ] }),
     /* @__PURE__ */ jsxs("section", { style: sectionStyle, children: [
+      /* @__PURE__ */ jsxs("div", { style: { display: "grid", gap: "10px" }, children: [
+        /* @__PURE__ */ jsxs("div", { style: { ...headerRowStyle, justifyContent: "space-between" }, children: [
+          /* @__PURE__ */ jsx("h2", { style: sectionTitleStyle, children: "Recent Runs" }),
+          /* @__PURE__ */ jsx(
+            "button",
+            {
+              type: "button",
+              onClick: () => {
+                void refreshOverview();
+              },
+              disabled: isRefreshing,
+              style: isRefreshing ? { ...buttonStyle, ...buttonDisabledStyle } : buttonStyle,
+              children: refreshButtonLabel
+            }
+          )
+        ] }),
+        /* @__PURE__ */ jsx("p", { style: mutedTextStyle, children: "Recent workflow executions including manual, cron, label trigger, and API runs." })
+      ] }),
+      /* @__PURE__ */ jsx(RecentRunsTable, { recentRuns: data.recentRuns })
+    ] }),
+    /* @__PURE__ */ jsxs("section", { style: sectionStyle, children: [
       /* @__PURE__ */ jsxs("div", { style: { display: "flex", alignItems: "center", justifyContent: "space-between" }, children: [
         /* @__PURE__ */ jsx("h2", { style: sectionTitleStyle, children: "Help" }),
         /* @__PURE__ */ jsx("button", { type: "button", style: buttonStyle, onClick: () => setShowHelp(!showHelp), children: showHelp ? "\uB2EB\uAE30" : "\uB3C4\uC6C0\uB9D0" })
@@ -1724,7 +1798,13 @@ function WorkflowDashboardWidget(props) {
       /* @__PURE__ */ jsx("span", { style: mutedTextStyle, children: "Unable to load workflow summary." })
     ] });
   }
-  const data = overview.data ?? { workflows: [], activeRuns: [], projects: [], labels: [] };
+  const data = {
+    workflows: overview.data?.workflows ?? [],
+    activeRuns: overview.data?.activeRuns ?? [],
+    recentRuns: overview.data?.recentRuns ?? [],
+    projects: overview.data?.projects ?? [],
+    labels: overview.data?.labels ?? []
+  };
   const statusCounts = countStatuses(data.activeRuns);
   return /* @__PURE__ */ jsxs("div", { "data-plugin-id": PLUGIN_ID, style: widgetStyle, children: [
     /* @__PURE__ */ jsx("h2", { style: widgetTitleStyle, children: "Workflows" }),

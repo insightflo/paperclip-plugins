@@ -1,7 +1,7 @@
 import { definePlugin, runWorker, } from "@paperclipai/plugin-sdk";
 import { JOB_KEYS, RUN_STATUSES, STEP_STATUSES } from "./constants.js";
 import { getEscalationTarget, getNextSteps, getRetryInfo, } from "./dag-engine.js";
-import { checkIdempotency, createWorkflowDefinition, createWorkflowRun, listWorkflowRunsByWorkflowId, updateWorkflowDefinition, createStepRun, findStepRunByIssueId, getStepRun, getWorkflowDefinition, getWorkflowRun, listActiveRuns, listStepRuns, listWorkflowDefinitions, markIdempotency, updateStepRun, updateWorkflowRun, } from "./workflow-store.js";
+import { checkIdempotency, createWorkflowDefinition, createWorkflowRun, listWorkflowRunsByWorkflowId, updateWorkflowDefinition, createStepRun, findStepRunByIssueId, getStepRun, getWorkflowDefinition, getWorkflowRun, listActiveRuns, listRecentRuns, listStepRuns, listWorkflowDefinitions, markIdempotency, updateStepRun, updateWorkflowRun, } from "./workflow-store.js";
 import { TERMINAL_STEP_STATUSES, findStepDefinition, getStepAgentName, getStepAgentNameHint, toWorkflowDefinitionRecord, toWorkflowRunRecord, toWorkflowStepRunRecord, } from "./workflow-utils.js";
 import { checkDailyRunGuard } from "./run-guards.js";
 import { ensureIssueLabels } from "./issue-labels.js";
@@ -260,8 +260,11 @@ async function invokeAgentForStep(ctx, stepRunRecord, stepDef, workflowName, com
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
             source: "assignment",
-            payload: { issueId: stepRunRecord.data.issueId },
-            forceFreshSession: true,
+            payload: {
+                issueId: stepRunRecord.data.issueId,
+                taskKey: `wf:${stepRunRecord.data.runId}:${agent.id}`,
+            },
+            forceFreshSession: false,
         }),
     });
     if (!wakeupRes.ok) {
@@ -1395,7 +1398,7 @@ const plugin = definePlugin({
             try {
                 const companyId = typeof params.companyId === "string" ? params.companyId.trim() : "";
                 if (!companyId) {
-                    return { workflows: [], activeRuns: [], projects: [], labels: [] };
+                    return { workflows: [], activeRuns: [], recentRuns: [], projects: [], labels: [] };
                 }
                 let projectsList = [];
                 let labelsList = [];
@@ -1421,31 +1424,34 @@ const plugin = definePlugin({
                     }
                 }
                 catch { /* labels not available */ }
-                const [workflowDefinitions, activeRuns] = await Promise.all([
+                const [workflowDefinitions, activeRuns, recentRuns] = await Promise.all([
                     listWorkflowDefinitions(ctx, companyId),
                     listActiveRuns(ctx, companyId),
+                    listRecentRuns(ctx, companyId, 25),
                 ]);
+                const serializeRun = async (record) => {
+                    const run = toWorkflowRunRecord(record);
+                    const parentIssueId = typeof run.data.parentIssueId === "string" ? run.data.parentIssueId : "";
+                    let parentIssueIdentifier;
+                    if (parentIssueId) {
+                        try {
+                            const issue = await ctx.issues.get(parentIssueId, companyId);
+                            parentIssueIdentifier = issue.identifier;
+                        }
+                        catch { /* issue not found */ }
+                    }
+                    return {
+                        id: run.id,
+                        ...run.data,
+                        status: run.data.status ?? run.status,
+                        parentIssueIdentifier,
+                    };
+                };
                 return {
                     projects: projectsList,
                     labels: labelsList,
-                    activeRuns: await Promise.all(activeRuns.map(async (record) => {
-                        const run = toWorkflowRunRecord(record);
-                        const parentIssueId = typeof run.data.parentIssueId === "string" ? run.data.parentIssueId : "";
-                        let parentIssueIdentifier;
-                        if (parentIssueId) {
-                            try {
-                                const issue = await ctx.issues.get(parentIssueId, companyId);
-                                parentIssueIdentifier = issue.identifier;
-                            }
-                            catch { /* issue not found */ }
-                        }
-                        return {
-                            id: run.id,
-                            ...run.data,
-                            status: run.data.status ?? run.status,
-                            parentIssueIdentifier,
-                        };
-                    })),
+                    activeRuns: await Promise.all(activeRuns.map(serializeRun)),
+                    recentRuns: await Promise.all(recentRuns.map(serializeRun)),
                     workflows: workflowDefinitions
                         .filter((record) => {
                         const data = record.data;
@@ -1466,7 +1472,7 @@ const plugin = definePlugin({
                 ctx.logger.warn("Failed to load workflow overview data", {
                     error: summarizeError(error),
                 });
-                return { workflows: [], activeRuns: [], projects: [], labels: [] };
+                return { workflows: [], activeRuns: [], recentRuns: [], projects: [], labels: [] };
             }
         });
         registerDataHandler(ctx, "workflow-run-detail", async (params) => {

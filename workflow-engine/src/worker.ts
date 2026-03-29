@@ -25,6 +25,7 @@ import {
   getWorkflowDefinition,
   getWorkflowRun,
   listActiveRuns,
+  listRecentRuns,
   listStepRuns,
   listWorkflowDefinitions,
   markIdempotency,
@@ -403,8 +404,11 @@ async function invokeAgentForStep(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       source: "assignment",
-      payload: { issueId: stepRunRecord.data.issueId },
-      forceFreshSession: true,
+      payload: {
+        issueId: stepRunRecord.data.issueId,
+        taskKey: `wf:${stepRunRecord.data.runId}:${agent.id}`,
+      },
+      forceFreshSession: false,
     }),
   });
   if (!wakeupRes.ok) {
@@ -1783,7 +1787,7 @@ const plugin = definePlugin({
       try {
         const companyId = typeof params.companyId === "string" ? params.companyId.trim() : "";
         if (!companyId) {
-          return { workflows: [], activeRuns: [], projects: [], labels: [] };
+          return { workflows: [], activeRuns: [], recentRuns: [], projects: [], labels: [] };
         }
 
         let projectsList: Array<{ id: string; name: string }> = [];
@@ -1809,31 +1813,35 @@ const plugin = definePlugin({
           }
         } catch { /* labels not available */ }
 
-        const [workflowDefinitions, activeRuns] = await Promise.all([
+        const [workflowDefinitions, activeRuns, recentRuns] = await Promise.all([
           listWorkflowDefinitions(ctx, companyId),
           listActiveRuns(ctx, companyId),
+          listRecentRuns(ctx, companyId, 25),
         ]);
+
+        const serializeRun = async (record: PluginEntityRecord) => {
+          const run = toWorkflowRunRecord(record);
+          const parentIssueId = typeof run.data.parentIssueId === "string" ? run.data.parentIssueId : "";
+          let parentIssueIdentifier: string | undefined;
+          if (parentIssueId) {
+            try {
+              const issue = await ctx.issues.get(parentIssueId, companyId);
+              parentIssueIdentifier = (issue as unknown as Record<string, unknown>).identifier as string | undefined;
+            } catch { /* issue not found */ }
+          }
+          return {
+            id: run.id,
+            ...run.data,
+            status: (run.data as Record<string, unknown>).status as string ?? run.status,
+            parentIssueIdentifier,
+          };
+        };
 
         return {
           projects: projectsList,
           labels: labelsList,
-          activeRuns: await Promise.all(activeRuns.map(async (record) => {
-            const run = toWorkflowRunRecord(record);
-            const parentIssueId = typeof run.data.parentIssueId === "string" ? run.data.parentIssueId : "";
-            let parentIssueIdentifier: string | undefined;
-            if (parentIssueId) {
-              try {
-                const issue = await ctx.issues.get(parentIssueId, companyId);
-                parentIssueIdentifier = (issue as unknown as Record<string, unknown>).identifier as string | undefined;
-              } catch { /* issue not found */ }
-            }
-            return {
-              id: run.id,
-              ...run.data,
-              status: (run.data as Record<string, unknown>).status as string ?? run.status,
-              parentIssueIdentifier,
-            };
-          })),
+          activeRuns: await Promise.all(activeRuns.map(serializeRun)),
+          recentRuns: await Promise.all(recentRuns.map(serializeRun)),
           workflows: workflowDefinitions
             .filter((record) => {
               const data = record.data as Record<string, unknown>;
@@ -1854,7 +1862,7 @@ const plugin = definePlugin({
         ctx.logger.warn("Failed to load workflow overview data", {
           error: summarizeError(error),
         });
-        return { workflows: [], activeRuns: [], projects: [], labels: [] };
+        return { workflows: [], activeRuns: [], recentRuns: [], projects: [], labels: [] };
       }
     });
 

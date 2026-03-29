@@ -270,6 +270,28 @@ export async function listActiveRuns(
   return runs.filter((run: PluginEntityRecord) => run.status === "running");
 }
 
+export async function listRecentRuns(
+  ctx: PluginContext,
+  companyId: string,
+  limit = 20,
+): Promise<PluginEntityRecord[]> {
+  const runs = await ctx.entities.list({
+    entityType: ENTITY_TYPES.workflowRun,
+    scopeKind: "company",
+    scopeId: companyId,
+  });
+
+  return runs
+    .sort((a: PluginEntityRecord, b: PluginEntityRecord) => {
+      const aData = a.data as Partial<WorkflowRun>;
+      const bData = b.data as Partial<WorkflowRun>;
+      const aTime = Date.parse(aData.completedAt ?? aData.startedAt ?? "") || 0;
+      const bTime = Date.parse(bData.completedAt ?? bData.startedAt ?? "") || 0;
+      return bTime - aTime;
+    })
+    .slice(0, Math.max(0, limit));
+}
+
 export async function listWorkflowRunsByWorkflowId(
   ctx: PluginContext,
   companyId: string,

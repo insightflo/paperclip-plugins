@@ -132,6 +132,22 @@ export async function listActiveRuns(ctx, companyId) {
     });
     return runs.filter((run) => run.status === "running");
 }
+export async function listRecentRuns(ctx, companyId, limit = 20) {
+    const runs = await ctx.entities.list({
+        entityType: ENTITY_TYPES.workflowRun,
+        scopeKind: "company",
+        scopeId: companyId,
+    });
+    return runs
+        .sort((a, b) => {
+        const aData = a.data;
+        const bData = b.data;
+        const aTime = Date.parse(aData.completedAt ?? aData.startedAt ?? "") || 0;
+        const bTime = Date.parse(bData.completedAt ?? bData.startedAt ?? "") || 0;
+        return bTime - aTime;
+    })
+        .slice(0, Math.max(0, limit));
+}
 export async function listWorkflowRunsByWorkflowId(ctx, companyId, workflowId) {
     const runs = await ctx.entities.list({
         entityType: ENTITY_TYPES.workflowRun,

@@ -57,6 +57,19 @@ type WorkflowOverviewData = {
     workflowName: string;
     status: string;
     startedAt: string;
+    completedAt?: string;
+    triggerSource?: string;
+    parentIssueId?: string;
+    parentIssueIdentifier?: string;
+    runLabel?: string;
+  }>;
+  recentRuns: Array<{
+    id: string;
+    workflowName: string;
+    status: string;
+    startedAt: string;
+    completedAt?: string;
+    triggerSource?: string;
     parentIssueId?: string;
     parentIssueIdentifier?: string;
     runLabel?: string;
@@ -1218,7 +1231,7 @@ function DefinitionsTable({
 }
 
 function ActiveRunsTable({ activeRuns, onAbort }: { activeRuns: WorkflowOverviewData["activeRuns"]; onAbort: (runId: string) => void }): JSX.Element {
-  if (activeRuns.length === 0) {
+  if (!Array.isArray(activeRuns) || activeRuns.length === 0) {
     return <p style={mutedTextStyle}>No active runs.</p>;
   }
 
@@ -1259,6 +1272,72 @@ function ActiveRunsTable({ activeRuns, onAbort }: { activeRuns: WorkflowOverview
             <td style={tdStyle}>
               <button type="button" style={dangerButtonStyle} onClick={() => onAbort(run.id)}>Abort</button>
             </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
+function formatTriggerSource(triggerSource?: string): string {
+  switch ((triggerSource ?? "").trim().toLowerCase()) {
+    case "schedule":
+      return "cron";
+    case "label":
+      return "label";
+    case "api":
+      return "api";
+    case "manual":
+      return "manual";
+    default:
+      return triggerSource?.trim() || "unknown";
+  }
+}
+
+function RecentRunsTable({ recentRuns }: { recentRuns: WorkflowOverviewData["recentRuns"] }): JSX.Element {
+  if (!Array.isArray(recentRuns) || recentRuns.length === 0) {
+    return <p style={mutedTextStyle}>No recent runs.</p>;
+  }
+
+  return (
+    <table style={tableStyle}>
+      <thead>
+        <tr>
+          <th style={thStyle}>Workflow</th>
+          <th style={thStyle}>Run</th>
+          <th style={thStyle}>Trigger</th>
+          <th style={thStyle}>Issue</th>
+          <th style={thStyle}>Status</th>
+          <th style={thStyle}>Started</th>
+          <th style={thStyle}>Completed</th>
+        </tr>
+      </thead>
+      <tbody>
+        {recentRuns.map((run) => (
+          <tr key={run.id}>
+            <td style={tdStyle}>{run.workflowName}</td>
+            <td style={tdStyle}>
+              {run.runLabel && <span style={{ fontSize: "12px", fontWeight: 600 }}>{run.runLabel}</span>}
+            </td>
+            <td style={tdStyle}>{formatTriggerSource(run.triggerSource)}</td>
+            <td style={tdStyle}>
+              {run.parentIssueId ? (
+                <a
+                  href={`/issues/${run.parentIssueId}`}
+                  style={{ color: "var(--link, #60a5fa)", fontSize: "12px", textDecoration: "none" }}
+                  title={run.parentIssueId}
+                >
+                  {run.parentIssueIdentifier || run.parentIssueId.slice(0, 8)}
+                </a>
+              ) : (
+                <span style={mutedTextStyle}>-</span>
+              )}
+            </td>
+            <td style={tdStyle}>
+              <span style={statusBadgeStyle(run.status)}>{run.status}</span>
+            </td>
+            <td style={tdStyle}>{formatDateTime(run.startedAt)}</td>
+            <td style={tdStyle}>{run.completedAt ? formatDateTime(run.completedAt) : "-"}</td>
           </tr>
         ))}
       </tbody>
@@ -1496,7 +1575,13 @@ export function WorkflowPage(props: PluginPageProps): JSX.Element {
     );
   }
 
-  const data = overview.data ?? { workflows: [], activeRuns: [], projects: [], labels: [] };
+  const data = {
+    workflows: overview.data?.workflows ?? [],
+    activeRuns: overview.data?.activeRuns ?? [],
+    recentRuns: overview.data?.recentRuns ?? [],
+    projects: overview.data?.projects ?? [],
+    labels: overview.data?.labels ?? [],
+  };
 
   return (
     <div data-plugin-id={PLUGIN_ID} style={pageStyle}>
@@ -1741,6 +1826,26 @@ export function WorkflowPage(props: PluginPageProps): JSX.Element {
       </section>
 
       <section style={sectionStyle}>
+        <div style={{ display: "grid", gap: "10px" }}>
+          <div style={{ ...headerRowStyle, justifyContent: "space-between" }}>
+            <h2 style={sectionTitleStyle}>Recent Runs</h2>
+            <button
+              type="button"
+              onClick={() => {
+                void refreshOverview();
+              }}
+              disabled={isRefreshing}
+              style={isRefreshing ? { ...buttonStyle, ...buttonDisabledStyle } : buttonStyle}
+            >
+              {refreshButtonLabel}
+            </button>
+          </div>
+          <p style={mutedTextStyle}>Recent workflow executions including manual, cron, label trigger, and API runs.</p>
+        </div>
+        <RecentRunsTable recentRuns={data.recentRuns} />
+      </section>
+
+      <section style={sectionStyle}>
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
           <h2 style={sectionTitleStyle}>Help</h2>
           <button type="button" style={buttonStyle} onClick={() => setShowHelp(!showHelp)}>
@@ -1812,7 +1917,13 @@ export function WorkflowDashboardWidget(props: PluginWidgetProps): JSX.Element {
     );
   }
 
-  const data = overview.data ?? { workflows: [], activeRuns: [], projects: [], labels: [] };
+  const data = {
+    workflows: overview.data?.workflows ?? [],
+    activeRuns: overview.data?.activeRuns ?? [],
+    recentRuns: overview.data?.recentRuns ?? [],
+    projects: overview.data?.projects ?? [],
+    labels: overview.data?.labels ?? [],
+  };
   const statusCounts = countStatuses(data.activeRuns);
 
   return (
