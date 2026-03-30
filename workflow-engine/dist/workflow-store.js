@@ -31,6 +31,19 @@ function mergeEntityData(record, updates) {
     }
     return merged;
 }
+function isPluginEntityExternalIdConflict(error) {
+    if (!error || typeof error !== "object") {
+        return false;
+    }
+    const code = "code" in error ? error.code : undefined;
+    if (code === "23505") {
+        return true;
+    }
+    const message = error instanceof Error ? error.message : String(error);
+    return message.includes("plugin_entities_external_idx")
+        || message.includes("duplicate key")
+        || message.includes("unique constraint");
+}
 async function getEntityByType(ctx, id, entityType) {
     const pageSize = 200;
     let offset = 0;
@@ -237,13 +250,26 @@ export async function checkIdempotency(ctx, key, companyId) {
     }
 }
 export async function markIdempotency(ctx, key, companyId) {
-    await ctx.entities.upsert({
-        entityType: ENTITY_TYPES.idempotencyKey,
-        scopeKind: "company",
-        scopeId: companyId,
-        externalId: key,
-        data: {
-            processedAt: new Date().toISOString(),
-        },
-    });
+    try {
+        await ctx.entities.upsert({
+            entityType: ENTITY_TYPES.idempotencyKey,
+            scopeKind: "company",
+            scopeId: companyId,
+            externalId: key,
+            title: key,
+            status: "processed",
+            data: {
+                processedAt: new Date().toISOString(),
+            },
+        });
+    }
+    catch (error) {
+        if (!isPluginEntityExternalIdConflict(error)) {
+            throw error;
+        }
+        const exists = await checkIdempotency(ctx, key, companyId);
+        if (!exists) {
+            throw error;
+        }
+    }
 }

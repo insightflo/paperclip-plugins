@@ -80,6 +80,8 @@ type ReconcilerModule = {
 };
 const OPEN_ISSUE_STATUSES = new Set(["backlog", "todo", "in_progress", "in_review", "blocked"]);
 const inflightToolResultKeys = new Set<string>();
+const inflightAdvanceWorkflowKeys = new Set<string>();
+const inflightStepActivationKeys = new Set<string>();
 
 function resolveTemplateVars(template: string, vars: Record<string, string>): string {
   return template.replace(/\{\$(\w+)\}/g, (_, key) => vars[key] ?? `{$${key}}`);
@@ -109,6 +111,14 @@ function getPaperclipApiUrl(): string {
 
 function buildToolResultIdempotencyKey(stepRunId: string, success: boolean): string {
   return `tool-result:${stepRunId}:${success ? "success" : "failure"}`;
+}
+
+function buildAdvanceWorkflowIdempotencyKey(workflowRunId: string, stepRunId: string): string {
+  return `advance-workflow:${workflowRunId}:${stepRunId}`;
+}
+
+function buildStepActivationKey(runId: string, stepId: string): string {
+  return `step-activation:${runId}:${stepId}`;
 }
 
 async function cancelActiveIssueRun(
@@ -729,22 +739,33 @@ async function activateBacklogStep(
     labelIds?: string[];
   },
 ): Promise<WorkflowStepRunRecord> {
-  if (stepRunRecord.data.status !== STEP_STATUSES.backlog) {
-    return stepRunRecord;
+  const activationKey = buildStepActivationKey(stepRunRecord.data.runId, stepRunRecord.data.stepId);
+  if (inflightStepActivationKeys.has(activationKey)) {
+    const currentStepRun = await getStepRun(ctx, stepRunRecord.id);
+    return currentStepRun ? toWorkflowStepRunRecord(currentStepRun) : stepRunRecord;
   }
+
+  inflightStepActivationKeys.add(activationKey);
+
+  try {
+    const currentStepRun = await getStepRun(ctx, stepRunRecord.id);
+    const liveStepRun = currentStepRun ? toWorkflowStepRunRecord(currentStepRun) : stepRunRecord;
+    if (liveStepRun.data.status !== STEP_STATUSES.backlog) {
+      return liveStepRun;
+    }
 
   const isToolStep = (stepDef.type ?? "agent") === "tool";
   const resolvedAgent = isToolStep
     ? { agentId: null, agentName: "system" }
-    : await resolveStepAgent(ctx, companyId, stepDef, stepRunRecord.data.agentName);
+    : await resolveStepAgent(ctx, companyId, stepDef, liveStepRun.data.agentName);
   const issueTitle = `[${workflowName}] ${resolveTemplateVars(stepDef.title, options?.templateVars ?? {})}`;
 
-  let issueId = typeof stepRunRecord.data.issueId === "string" && stepRunRecord.data.issueId.trim()
-    ? stepRunRecord.data.issueId.trim()
+  let issueId = typeof liveStepRun.data.issueId === "string" && liveStepRun.data.issueId.trim()
+    ? liveStepRun.data.issueId.trim()
     : "";
   const stepDescription = getStepDescription(stepDef) ?? `Workflow step: ${stepDef.id}`;
   const depOutputs = !isToolStep
-    ? await collectDependencyOutputs(ctx, stepDef, stepRunRecord.data.runId, companyId)
+    ? await collectDependencyOutputs(ctx, stepDef, liveStepRun.data.runId, companyId)
     : "";
   const toolInstructions = !isToolStep && (stepDef.tools ?? []).length > 0
     ? await fetchToolInstructions(ctx, stepDef.tools!, companyId)
@@ -807,9 +828,9 @@ async function activateBacklogStep(
   }
   await ensureIssueLabels(ctx, issueId, companyId, options?.labelIds);
 
-  const nextStartedAt = stepRunRecord.data.startedAt ?? new Date().toISOString();
-  let updatedStepRun = toWorkflowStepRunRecord(await updateStepRun(ctx, stepRunRecord.id, {
-    agentName: resolvedAgent.agentName ?? stepRunRecord.data.agentName,
+  const nextStartedAt = liveStepRun.data.startedAt ?? new Date().toISOString();
+  let updatedStepRun = toWorkflowStepRunRecord(await updateStepRun(ctx, liveStepRun.id, {
+    agentName: resolvedAgent.agentName ?? liveStepRun.data.agentName,
     issueId,
     startedAt: nextStartedAt,
     status: STEP_STATUSES.todo,
@@ -835,6 +856,9 @@ async function activateBacklogStep(
   }
 
   return updatedStepRun;
+  } finally {
+    inflightStepActivationKeys.delete(activationKey);
+  }
 }
 
 async function startWorkflow(
@@ -987,6 +1011,31 @@ async function advanceWorkflow(
   companyId: string,
 ): Promise<void> {
   const completedStepRun = toWorkflowStepRunRecord(stepRunRecord);
+  const advanceKey = buildAdvanceWorkflowIdempotencyKey(completedStepRun.data.runId, completedStepRun.id);
+
+  if (inflightAdvanceWorkflowKeys.has(advanceKey)) {
+    ctx.logger.info("Skipped duplicate in-flight advanceWorkflow", {
+      companyId,
+      runId: completedStepRun.data.runId,
+      stepId: completedStepRun.data.stepId,
+      stepRunId: completedStepRun.id,
+    });
+    return;
+  }
+
+  if (await checkIdempotency(ctx, advanceKey, companyId)) {
+    ctx.logger.info("Skipped already-processed advanceWorkflow", {
+      companyId,
+      runId: completedStepRun.data.runId,
+      stepId: completedStepRun.data.stepId,
+      stepRunId: completedStepRun.id,
+    });
+    return;
+  }
+
+  inflightAdvanceWorkflowKeys.add(advanceKey);
+
+  try {
   const workflowRun = await getWorkflowRun(ctx, completedStepRun.data.runId);
 
   if (!workflowRun) {
@@ -1100,6 +1149,7 @@ async function advanceWorkflow(
   }
 
   if (!nextSteps.isWorkflowComplete || (typedWorkflowRun.data.status as string) === RUN_STATUSES.completed) {
+    await markIdempotency(ctx, advanceKey, companyId);
     return;
   }
 
@@ -1114,6 +1164,10 @@ async function advanceWorkflow(
     workflowId: typedWorkflowRun.data.workflowId,
     workflowName: typedWorkflowRun.data.workflowName,
   });
+  await markIdempotency(ctx, advanceKey, companyId);
+  } finally {
+    inflightAdvanceWorkflowKeys.delete(advanceKey);
+  }
 }
 
 async function activateEscalationStep(

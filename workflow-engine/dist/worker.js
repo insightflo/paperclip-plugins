@@ -8,6 +8,8 @@ import { ensureIssueLabels } from "./issue-labels.js";
 import { autoCompleteWorkflowStepIssue, syncWorkflowStepIssueStatus, syncWorkflowStepIssueStatusFromStepRun, } from "./run-event-utils.js";
 const OPEN_ISSUE_STATUSES = new Set(["backlog", "todo", "in_progress", "in_review", "blocked"]);
 const inflightToolResultKeys = new Set();
+const inflightAdvanceWorkflowKeys = new Set();
+const inflightStepActivationKeys = new Set();
 function resolveTemplateVars(template, vars) {
     return template.replace(/\{\$(\w+)\}/g, (_, key) => vars[key] ?? `{$${key}}`);
 }
@@ -35,6 +37,12 @@ function getPaperclipApiUrl() {
 }
 function buildToolResultIdempotencyKey(stepRunId, success) {
     return `tool-result:${stepRunId}:${success ? "success" : "failure"}`;
+}
+function buildAdvanceWorkflowIdempotencyKey(workflowRunId, stepRunId) {
+    return `advance-workflow:${workflowRunId}:${stepRunId}`;
+}
+function buildStepActivationKey(runId, stepId) {
+    return `step-activation:${runId}:${stepId}`;
 }
 async function cancelActiveIssueRun(ctx, issueId, companyId) {
     const apiUrl = getPaperclipApiUrl();
@@ -517,30 +525,65 @@ async function collectDependencyOutputs(ctx, stepDef, runId, companyId) {
     return parts.join("\n\n");
 }
 async function activateBacklogStep(ctx, stepRunRecord, stepDef, workflowName, companyId, options) {
-    if (stepRunRecord.data.status !== STEP_STATUSES.backlog) {
-        return stepRunRecord;
+    const activationKey = buildStepActivationKey(stepRunRecord.data.runId, stepRunRecord.data.stepId);
+    if (inflightStepActivationKeys.has(activationKey)) {
+        const currentStepRun = await getStepRun(ctx, stepRunRecord.id);
+        return currentStepRun ? toWorkflowStepRunRecord(currentStepRun) : stepRunRecord;
     }
-    const isToolStep = (stepDef.type ?? "agent") === "tool";
-    const resolvedAgent = isToolStep
-        ? { agentId: null, agentName: "system" }
-        : await resolveStepAgent(ctx, companyId, stepDef, stepRunRecord.data.agentName);
-    const issueTitle = `[${workflowName}] ${resolveTemplateVars(stepDef.title, options?.templateVars ?? {})}`;
-    let issueId = typeof stepRunRecord.data.issueId === "string" && stepRunRecord.data.issueId.trim()
-        ? stepRunRecord.data.issueId.trim()
-        : "";
-    const stepDescription = getStepDescription(stepDef) ?? `Workflow step: ${stepDef.id}`;
-    const depOutputs = !isToolStep
-        ? await collectDependencyOutputs(ctx, stepDef, stepRunRecord.data.runId, companyId)
-        : "";
-    const toolInstructions = !isToolStep && (stepDef.tools ?? []).length > 0
-        ? await fetchToolInstructions(ctx, stepDef.tools, companyId)
-        : "";
-    const fullDescription = [stepDescription, depOutputs, toolInstructions].filter(Boolean).join("\n\n");
-    let stepIssue = null;
-    if (!issueId) {
-        stepIssue = await reconcileDuplicateStepIssues(ctx, companyId, issueTitle, options?.parentIssueId);
+    inflightStepActivationKeys.add(activationKey);
+    try {
+        const currentStepRun = await getStepRun(ctx, stepRunRecord.id);
+        const liveStepRun = currentStepRun ? toWorkflowStepRunRecord(currentStepRun) : stepRunRecord;
+        if (liveStepRun.data.status !== STEP_STATUSES.backlog) {
+            return liveStepRun;
+        }
+        const isToolStep = (stepDef.type ?? "agent") === "tool";
+        const resolvedAgent = isToolStep
+            ? { agentId: null, agentName: "system" }
+            : await resolveStepAgent(ctx, companyId, stepDef, liveStepRun.data.agentName);
+        const issueTitle = `[${workflowName}] ${resolveTemplateVars(stepDef.title, options?.templateVars ?? {})}`;
+        let issueId = typeof liveStepRun.data.issueId === "string" && liveStepRun.data.issueId.trim()
+            ? liveStepRun.data.issueId.trim()
+            : "";
+        const stepDescription = getStepDescription(stepDef) ?? `Workflow step: ${stepDef.id}`;
+        const depOutputs = !isToolStep
+            ? await collectDependencyOutputs(ctx, stepDef, liveStepRun.data.runId, companyId)
+            : "";
+        const toolInstructions = !isToolStep && (stepDef.tools ?? []).length > 0
+            ? await fetchToolInstructions(ctx, stepDef.tools, companyId)
+            : "";
+        const fullDescription = [stepDescription, depOutputs, toolInstructions].filter(Boolean).join("\n\n");
+        let stepIssue = null;
+        if (!issueId) {
+            stepIssue = await reconcileDuplicateStepIssues(ctx, companyId, issueTitle, options?.parentIssueId);
+            if (!stepIssue) {
+                stepIssue = await createIssueWithLabels(ctx, {
+                    assigneeAgentId: resolvedAgent.agentId ?? undefined,
+                    companyId,
+                    description: fullDescription,
+                    parentId: options?.parentIssueId,
+                    goalId: options?.goalId || undefined,
+                    projectId: options?.projectId || undefined,
+                    title: issueTitle,
+                }, options?.labelIds);
+                await ctx.issues.update(stepIssue.id, { status: "todo" }, companyId);
+            }
+            const canonicalIssue = await reconcileDuplicateStepIssues(ctx, companyId, issueTitle, options?.parentIssueId);
+            if (canonicalIssue) {
+                stepIssue = canonicalIssue;
+            }
+            issueId = stepIssue.id;
+        }
+        else {
+            try {
+                stepIssue = await ctx.issues.get(issueId, companyId);
+            }
+            catch {
+                stepIssue = null;
+            }
+        }
         if (!stepIssue) {
-            stepIssue = await createIssueWithLabels(ctx, {
+            const issue = await createIssueWithLabels(ctx, {
                 assigneeAgentId: resolvedAgent.agentId ?? undefined,
                 companyId,
                 description: fullDescription,
@@ -549,58 +592,36 @@ async function activateBacklogStep(ctx, stepRunRecord, stepDef, workflowName, co
                 projectId: options?.projectId || undefined,
                 title: issueTitle,
             }, options?.labelIds);
-            await ctx.issues.update(stepIssue.id, { status: "todo" }, companyId);
+            await ctx.issues.update(issue.id, { status: "todo" }, companyId);
+            stepIssue = issue;
+            issueId = issue.id;
         }
-        const canonicalIssue = await reconcileDuplicateStepIssues(ctx, companyId, issueTitle, options?.parentIssueId);
-        if (canonicalIssue) {
-            stepIssue = canonicalIssue;
+        await ensureIssueLabels(ctx, issueId, companyId, options?.labelIds);
+        const nextStartedAt = liveStepRun.data.startedAt ?? new Date().toISOString();
+        let updatedStepRun = toWorkflowStepRunRecord(await updateStepRun(ctx, liveStepRun.id, {
+            agentName: resolvedAgent.agentName ?? liveStepRun.data.agentName,
+            issueId,
+            startedAt: nextStartedAt,
+            status: STEP_STATUSES.todo,
+        }));
+        const stepType = stepDef.type ?? "agent";
+        if (stepType === "tool") {
+            await executeToolStep(ctx, updatedStepRun, stepDef, workflowName, companyId);
         }
-        issueId = stepIssue.id;
-    }
-    else {
-        try {
-            stepIssue = await ctx.issues.get(issueId, companyId);
+        else {
+            updatedStepRun = await invokeAgentForStep(ctx, updatedStepRun, stepDef, workflowName, companyId);
+            // wakeup 직후 즉시 in_progress로 변경 — todo 상태로 5분 지나면 Reconciler가 stuck으로 오판
+            const inProgressRecord = await updateStepRun(ctx, updatedStepRun.id, {
+                status: STEP_STATUSES.inProgress,
+                startedAt: updatedStepRun.data.startedAt ?? new Date().toISOString(),
+            });
+            updatedStepRun = toWorkflowStepRunRecord(inProgressRecord);
         }
-        catch {
-            stepIssue = null;
-        }
+        return updatedStepRun;
     }
-    if (!stepIssue) {
-        const issue = await createIssueWithLabels(ctx, {
-            assigneeAgentId: resolvedAgent.agentId ?? undefined,
-            companyId,
-            description: fullDescription,
-            parentId: options?.parentIssueId,
-            goalId: options?.goalId || undefined,
-            projectId: options?.projectId || undefined,
-            title: issueTitle,
-        }, options?.labelIds);
-        await ctx.issues.update(issue.id, { status: "todo" }, companyId);
-        stepIssue = issue;
-        issueId = issue.id;
+    finally {
+        inflightStepActivationKeys.delete(activationKey);
     }
-    await ensureIssueLabels(ctx, issueId, companyId, options?.labelIds);
-    const nextStartedAt = stepRunRecord.data.startedAt ?? new Date().toISOString();
-    let updatedStepRun = toWorkflowStepRunRecord(await updateStepRun(ctx, stepRunRecord.id, {
-        agentName: resolvedAgent.agentName ?? stepRunRecord.data.agentName,
-        issueId,
-        startedAt: nextStartedAt,
-        status: STEP_STATUSES.todo,
-    }));
-    const stepType = stepDef.type ?? "agent";
-    if (stepType === "tool") {
-        await executeToolStep(ctx, updatedStepRun, stepDef, workflowName, companyId);
-    }
-    else {
-        updatedStepRun = await invokeAgentForStep(ctx, updatedStepRun, stepDef, workflowName, companyId);
-        // wakeup 직후 즉시 in_progress로 변경 — todo 상태로 5분 지나면 Reconciler가 stuck으로 오판
-        const inProgressRecord = await updateStepRun(ctx, updatedStepRun.id, {
-            status: STEP_STATUSES.inProgress,
-            startedAt: updatedStepRun.data.startedAt ?? new Date().toISOString(),
-        });
-        updatedStepRun = toWorkflowStepRunRecord(inProgressRecord);
-    }
-    return updatedStepRun;
 }
 async function startWorkflow(ctx, workflowId, companyId, options) {
     const workflowDefinition = await getWorkflowDefinition(ctx, workflowId);
@@ -709,106 +730,133 @@ async function startWorkflow(ctx, workflowId, companyId, options) {
 }
 async function advanceWorkflow(ctx, stepRunRecord, companyId) {
     const completedStepRun = toWorkflowStepRunRecord(stepRunRecord);
-    const workflowRun = await getWorkflowRun(ctx, completedStepRun.data.runId);
-    if (!workflowRun) {
-        ctx.logger.warn("Workflow run not found while advancing workflow", {
+    const advanceKey = buildAdvanceWorkflowIdempotencyKey(completedStepRun.data.runId, completedStepRun.id);
+    if (inflightAdvanceWorkflowKeys.has(advanceKey)) {
+        ctx.logger.info("Skipped duplicate in-flight advanceWorkflow", {
             companyId,
             runId: completedStepRun.data.runId,
             stepId: completedStepRun.data.stepId,
+            stepRunId: completedStepRun.id,
         });
         return;
     }
-    const typedWorkflowRun = toWorkflowRunRecord(workflowRun);
-    if (typedWorkflowRun.data.status !== RUN_STATUSES.running) {
-        return;
-    }
-    const workflowDefinition = await getWorkflowDefinition(ctx, typedWorkflowRun.data.workflowId);
-    if (!workflowDefinition) {
-        ctx.logger.warn("Workflow definition not found while advancing workflow", {
+    if (await checkIdempotency(ctx, advanceKey, companyId)) {
+        ctx.logger.info("Skipped already-processed advanceWorkflow", {
             companyId,
-            runId: typedWorkflowRun.id,
+            runId: completedStepRun.data.runId,
             stepId: completedStepRun.data.stepId,
-            workflowId: typedWorkflowRun.data.workflowId,
+            stepRunId: completedStepRun.id,
         });
         return;
     }
-    const typedWorkflowDefinition = toWorkflowDefinitionRecord(workflowDefinition);
-    const stepRuns = (await listStepRuns(ctx, typedWorkflowRun.id, companyId)).map(toWorkflowStepRunRecord);
-    const completed = new Set();
-    const failed = new Set();
-    const skipped = new Set();
-    for (const candidate of stepRuns) {
-        if (candidate.data.status === STEP_STATUSES.done) {
-            completed.add(candidate.data.stepId);
-            continue;
+    inflightAdvanceWorkflowKeys.add(advanceKey);
+    try {
+        const workflowRun = await getWorkflowRun(ctx, completedStepRun.data.runId);
+        if (!workflowRun) {
+            ctx.logger.warn("Workflow run not found while advancing workflow", {
+                companyId,
+                runId: completedStepRun.data.runId,
+                stepId: completedStepRun.data.stepId,
+            });
+            return;
         }
-        if (candidate.data.status === STEP_STATUSES.failed) {
-            failed.add(candidate.data.stepId);
-            continue;
+        const typedWorkflowRun = toWorkflowRunRecord(workflowRun);
+        if (typedWorkflowRun.data.status !== RUN_STATUSES.running) {
+            return;
         }
-        if (candidate.data.status === STEP_STATUSES.skipped) {
-            skipped.add(candidate.data.stepId);
-        }
-    }
-    const nextSteps = getNextSteps(typedWorkflowDefinition.data.steps, completed, failed, skipped);
-    const stepRunsById = new Map(stepRuns.map((candidate) => [candidate.data.stepId, candidate]));
-    for (const stepId of nextSteps.readyStepIds) {
-        const stepDef = findStepDefinition(typedWorkflowDefinition, stepId);
-        if (!stepDef) {
-            ctx.logger.warn("Ready workflow step definition not found", {
+        const workflowDefinition = await getWorkflowDefinition(ctx, typedWorkflowRun.data.workflowId);
+        if (!workflowDefinition) {
+            ctx.logger.warn("Workflow definition not found while advancing workflow", {
                 companyId,
                 runId: typedWorkflowRun.id,
-                stepId,
+                stepId: completedStepRun.data.stepId,
+                workflowId: typedWorkflowRun.data.workflowId,
             });
-            continue;
+            return;
         }
-        let stepRun = stepRunsById.get(stepId) ?? null;
-        if (!stepRun) {
-            const resolvedAgent = await resolveStepAgent(ctx, companyId, stepDef);
-            if (!resolvedAgent.agentName) {
-                ctx.logger.warn("Unable to create missing step run without agent assignment", {
+        const typedWorkflowDefinition = toWorkflowDefinitionRecord(workflowDefinition);
+        const stepRuns = (await listStepRuns(ctx, typedWorkflowRun.id, companyId)).map(toWorkflowStepRunRecord);
+        const completed = new Set();
+        const failed = new Set();
+        const skipped = new Set();
+        for (const candidate of stepRuns) {
+            if (candidate.data.status === STEP_STATUSES.done) {
+                completed.add(candidate.data.stepId);
+                continue;
+            }
+            if (candidate.data.status === STEP_STATUSES.failed) {
+                failed.add(candidate.data.stepId);
+                continue;
+            }
+            if (candidate.data.status === STEP_STATUSES.skipped) {
+                skipped.add(candidate.data.stepId);
+            }
+        }
+        const nextSteps = getNextSteps(typedWorkflowDefinition.data.steps, completed, failed, skipped);
+        const stepRunsById = new Map(stepRuns.map((candidate) => [candidate.data.stepId, candidate]));
+        for (const stepId of nextSteps.readyStepIds) {
+            const stepDef = findStepDefinition(typedWorkflowDefinition, stepId);
+            if (!stepDef) {
+                ctx.logger.warn("Ready workflow step definition not found", {
                     companyId,
                     runId: typedWorkflowRun.id,
                     stepId,
                 });
                 continue;
             }
-            stepRun = toWorkflowStepRunRecord(await createStepRun(ctx, companyId, {
-                agentName: resolvedAgent.agentName,
-                retryCount: 0,
-                runId: typedWorkflowRun.id,
-                status: STEP_STATUSES.backlog,
-                stepId,
-            }));
-            stepRunsById.set(stepId, stepRun);
+            let stepRun = stepRunsById.get(stepId) ?? null;
+            if (!stepRun) {
+                const resolvedAgent = await resolveStepAgent(ctx, companyId, stepDef);
+                if (!resolvedAgent.agentName) {
+                    ctx.logger.warn("Unable to create missing step run without agent assignment", {
+                        companyId,
+                        runId: typedWorkflowRun.id,
+                        stepId,
+                    });
+                    continue;
+                }
+                stepRun = toWorkflowStepRunRecord(await createStepRun(ctx, companyId, {
+                    agentName: resolvedAgent.agentName,
+                    retryCount: 0,
+                    runId: typedWorkflowRun.id,
+                    status: STEP_STATUSES.backlog,
+                    stepId,
+                }));
+                stepRunsById.set(stepId, stepRun);
+            }
+            await activateBacklogStep(ctx, stepRun, stepDef, typedWorkflowRun.data.workflowName, companyId, {
+                parentIssueId: typedWorkflowRun.data.parentIssueId,
+                projectId: typedWorkflowDefinition.data.projectId,
+                goalId: typedWorkflowDefinition.data.goalId,
+                labelIds: typedWorkflowDefinition.data.labelIds,
+                runLabel: typedWorkflowRun.data.runLabel,
+                templateVars: {
+                    date: (typedWorkflowRun.data.startedAt ?? "").slice(0, 10),
+                    runNumber: String(typedWorkflowRun.data.runLabel ?? "").replace(/^#\d{4}-\d{2}-\d{2}-/, ""),
+                    runLabel: typedWorkflowRun.data.runLabel ?? "",
+                    workflowName: typedWorkflowRun.data.workflowName,
+                },
+            });
         }
-        await activateBacklogStep(ctx, stepRun, stepDef, typedWorkflowRun.data.workflowName, companyId, {
-            parentIssueId: typedWorkflowRun.data.parentIssueId,
-            projectId: typedWorkflowDefinition.data.projectId,
-            goalId: typedWorkflowDefinition.data.goalId,
-            labelIds: typedWorkflowDefinition.data.labelIds,
-            runLabel: typedWorkflowRun.data.runLabel,
-            templateVars: {
-                date: (typedWorkflowRun.data.startedAt ?? "").slice(0, 10),
-                runNumber: String(typedWorkflowRun.data.runLabel ?? "").replace(/^#\d{4}-\d{2}-\d{2}-/, ""),
-                runLabel: typedWorkflowRun.data.runLabel ?? "",
-                workflowName: typedWorkflowRun.data.workflowName,
-            },
+        if (!nextSteps.isWorkflowComplete || typedWorkflowRun.data.status === RUN_STATUSES.completed) {
+            await markIdempotency(ctx, advanceKey, companyId);
+            return;
+        }
+        await updateWorkflowRun(ctx, typedWorkflowRun.id, {
+            completedAt: typedWorkflowRun.data.completedAt ?? new Date().toISOString(),
+            status: RUN_STATUSES.completed,
         });
+        ctx.logger.info("Workflow completed", {
+            companyId,
+            runId: typedWorkflowRun.id,
+            workflowId: typedWorkflowRun.data.workflowId,
+            workflowName: typedWorkflowRun.data.workflowName,
+        });
+        await markIdempotency(ctx, advanceKey, companyId);
     }
-    if (!nextSteps.isWorkflowComplete || typedWorkflowRun.data.status === RUN_STATUSES.completed) {
-        return;
+    finally {
+        inflightAdvanceWorkflowKeys.delete(advanceKey);
     }
-    await updateWorkflowRun(ctx, typedWorkflowRun.id, {
-        completedAt: typedWorkflowRun.data.completedAt ?? new Date().toISOString(),
-        status: RUN_STATUSES.completed,
-    });
-    ctx.logger.info("Workflow completed", {
-        companyId,
-        runId: typedWorkflowRun.id,
-        workflowId: typedWorkflowRun.data.workflowId,
-        workflowName: typedWorkflowRun.data.workflowName,
-    });
 }
 async function activateEscalationStep(ctx, workflowRun, workflowDefinition, sourceStepRun, escalationTargetId, companyId) {
     const escalationStep = findStepDefinition(workflowDefinition, escalationTargetId);

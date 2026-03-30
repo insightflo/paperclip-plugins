@@ -73,6 +73,21 @@ async function syncWorkflowStepIssueStatusByIssueId(ctx, issueId, companyId, nex
     }
     const stepRun = toWorkflowStepRunRecord(stepRunRecord);
     if (TERMINAL_STEP_STATUSES.has(stepRun.data.status)) {
+        if (nextIssueStatus === "done") {
+            const issue = await ctx.issues.get(issueId, companyId);
+            if (!issue) {
+                return { completed: false, issueId, reason: "issue not found" };
+            }
+            const status = typeof issue.status === "string" ? issue.status : "";
+            if (status === "todo" || status === "in_progress" || status === "in_review") {
+                await ctx.issues.update(issueId, { status: nextIssueStatus }, companyId);
+                return {
+                    completed: true,
+                    issueId,
+                    stepId: stepRun.data.stepId,
+                };
+            }
+        }
         return { completed: false, issueId, reason: `step already terminal (${stepRun.data.status})`, stepId: stepRun.data.stepId };
     }
     const issue = await ctx.issues.get(issueId, companyId);
