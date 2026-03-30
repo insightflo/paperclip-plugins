@@ -15,6 +15,7 @@ function toScopeKind(value) {
     }
     return "company";
 }
+const inflightIdempotencyMarks = new Set();
 function makeExternalId(prefix) {
     return `${prefix}:${Date.now()}:${randomUUID()}`;
 }
@@ -250,6 +251,14 @@ export async function checkIdempotency(ctx, key, companyId) {
     }
 }
 export async function markIdempotency(ctx, key, companyId) {
+    const scopedKey = `${companyId}:${key}`;
+    if (inflightIdempotencyMarks.has(scopedKey)) {
+        return;
+    }
+    if (await checkIdempotency(ctx, key, companyId)) {
+        return;
+    }
+    inflightIdempotencyMarks.add(scopedKey);
     try {
         await ctx.entities.upsert({
             entityType: ENTITY_TYPES.idempotencyKey,
@@ -271,5 +280,8 @@ export async function markIdempotency(ctx, key, companyId) {
         if (!exists) {
             throw error;
         }
+    }
+    finally {
+        inflightIdempotencyMarks.delete(scopedKey);
     }
 }

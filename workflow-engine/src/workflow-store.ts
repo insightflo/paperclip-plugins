@@ -80,6 +80,8 @@ function toScopeKind(value: unknown): PluginEntityScopeKind {
   return "company";
 }
 
+const inflightIdempotencyMarks = new Set<string>();
+
 function makeExternalId(prefix: string): string {
   return `${prefix}:${Date.now()}:${randomUUID()}`;
 }
@@ -474,6 +476,16 @@ export async function markIdempotency(
   key: string,
   companyId: string,
 ): Promise<void> {
+  const scopedKey = `${companyId}:${key}`;
+  if (inflightIdempotencyMarks.has(scopedKey)) {
+    return;
+  }
+
+  if (await checkIdempotency(ctx, key, companyId)) {
+    return;
+  }
+
+  inflightIdempotencyMarks.add(scopedKey);
   try {
     await ctx.entities.upsert({
       entityType: ENTITY_TYPES.idempotencyKey,
@@ -495,5 +507,7 @@ export async function markIdempotency(
     if (!exists) {
       throw error;
     }
+  } finally {
+    inflightIdempotencyMarks.delete(scopedKey);
   }
 }
