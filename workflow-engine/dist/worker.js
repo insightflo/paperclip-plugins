@@ -7,6 +7,7 @@ import { checkDailyRunGuard } from "./run-guards.js";
 import { ensureIssueLabels } from "./issue-labels.js";
 import { autoCompleteWorkflowStepIssue, syncWorkflowStepIssueStatus, syncWorkflowStepIssueStatusFromStepRun, } from "./run-event-utils.js";
 const OPEN_ISSUE_STATUSES = new Set(["backlog", "todo", "in_progress", "in_review", "blocked"]);
+const inflightToolResultKeys = new Set();
 function resolveTemplateVars(template, vars) {
     return template.replace(/\{\$(\w+)\}/g, (_, key) => vars[key] ?? `{$${key}}`);
 }
@@ -31,6 +32,9 @@ function extractLabelNames(payload) {
 }
 function getPaperclipApiUrl() {
     return process.env.PAPERCLIP_API_URL || "http://localhost:3100";
+}
+function buildToolResultIdempotencyKey(stepRunId, success) {
+    return `tool-result:${stepRunId}:${success ? "success" : "failure"}`;
 }
 async function cancelActiveIssueRun(ctx, issueId, companyId) {
     const apiUrl = getPaperclipApiUrl();
@@ -67,10 +71,16 @@ async function cancelActiveIssueRun(ctx, issueId, companyId) {
     }
 }
 async function abortWorkflowRunState(ctx, workflowRunId, companyId) {
+    const workflowRunRecord = await getWorkflowRun(ctx, workflowRunId);
+    if (!workflowRunRecord) {
+        throw new Error(`Workflow run not found: ${workflowRunId}`);
+    }
+    const workflowRun = toWorkflowRunRecord(workflowRunRecord);
     const stepRuns = (await listStepRuns(ctx, workflowRunId, companyId)).map(toWorkflowStepRunRecord);
     const completedAt = new Date().toISOString();
     let cancelledIssues = 0;
     let cancelledHeartbeats = 0;
+    let cancelledParentIssue = false;
     for (const stepRun of stepRuns) {
         if (TERMINAL_STEP_STATUSES.has(stepRun.data.status)) {
             continue;
@@ -136,9 +146,35 @@ async function abortWorkflowRunState(ctx, workflowRunId, companyId) {
         completedAt,
         status: RUN_STATUSES.aborted,
     });
+    const parentIssueId = typeof workflowRun.data.parentIssueId === "string"
+        ? workflowRun.data.parentIssueId.trim()
+        : "";
+    if (parentIssueId) {
+        try {
+            const parentIssue = await ctx.issues.get(parentIssueId, companyId);
+            if (parentIssue && parentIssue.status !== "done" && parentIssue.status !== "cancelled") {
+                await ctx.issues.update(parentIssueId, { status: "cancelled" }, companyId);
+                await ctx.issues.createComment(parentIssueId, [
+                    "### Workflow run aborted by workflow engine",
+                    "",
+                    "This parent issue was marked cancelled because the workflow run was aborted from the Workflow Engine UI.",
+                ].join("\n"), companyId);
+                cancelledParentIssue = true;
+            }
+        }
+        catch (error) {
+            ctx.logger.warn("Failed to mark workflow parent issue cancelled during abort", {
+                companyId,
+                error: summarizeError(error),
+                parentIssueId,
+                runId: workflowRunId,
+            });
+        }
+    }
     ctx.logger.info("Workflow run aborted from Workflow Engine UI", {
         cancelledHeartbeats,
         cancelledIssues,
+        cancelledParentIssue,
         companyId,
         runId: workflowRunId,
         stepCount: stepRuns.length,
@@ -1260,6 +1296,7 @@ const plugin = definePlugin({
             }
         });
         ctx.events.on("plugin.insightflo.tool-registry.tool-execution-result", async (event) => {
+            let toolResultKey = "";
             try {
                 const payload = event.payload;
                 const stepRunId = typeof payload.stepRunId === "string" ? payload.stepRunId.trim() : "";
@@ -1269,6 +1306,26 @@ const plugin = definePlugin({
                     ctx.logger.warn("tool-execution-result missing stepRunId", { payload });
                     return;
                 }
+                toolResultKey = buildToolResultIdempotencyKey(stepRunId, success);
+                if (inflightToolResultKeys.has(toolResultKey)) {
+                    ctx.logger.info("Skipped duplicate in-flight tool result event", {
+                        companyId: event.companyId,
+                        stepRunId,
+                        success,
+                        toolName,
+                    });
+                    return;
+                }
+                inflightToolResultKeys.add(toolResultKey);
+                if (await checkIdempotency(ctx, toolResultKey, event.companyId)) {
+                    ctx.logger.info("Skipped already-processed tool result event", {
+                        companyId: event.companyId,
+                        stepRunId,
+                        success,
+                        toolName,
+                    });
+                    return;
+                }
                 const stepRunRecord = await getStepRun(ctx, stepRunId);
                 if (!stepRunRecord) {
                     ctx.logger.warn("Step run not found for tool result", { stepRunId });
@@ -1276,6 +1333,7 @@ const plugin = definePlugin({
                 }
                 const typedStepRun = toWorkflowStepRunRecord(stepRunRecord);
                 if (TERMINAL_STEP_STATUSES.has(typedStepRun.data.status)) {
+                    await markIdempotency(ctx, toolResultKey, event.companyId);
                     return;
                 }
                 const nextStatus = success ? STEP_STATUSES.done : STEP_STATUSES.failed;
@@ -1330,12 +1388,18 @@ const plugin = definePlugin({
                         }
                     }
                 }
+                await markIdempotency(ctx, toolResultKey, event.companyId);
             }
             catch (error) {
                 ctx.logger.warn("Failed to handle tool-execution-result", {
                     companyId: event.companyId,
                     error: summarizeError(error),
                 });
+            }
+            finally {
+                if (toolResultKey) {
+                    inflightToolResultKeys.delete(toolResultKey);
+                }
             }
         });
         ctx.actions.register("start-workflow", async (rawParams) => {

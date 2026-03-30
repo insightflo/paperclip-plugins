@@ -79,6 +79,7 @@ type ReconcilerModule = {
   ) => Promise<unknown>) => void;
 };
 const OPEN_ISSUE_STATUSES = new Set(["backlog", "todo", "in_progress", "in_review", "blocked"]);
+const inflightToolResultKeys = new Set<string>();
 
 function resolveTemplateVars(template: string, vars: Record<string, string>): string {
   return template.replace(/\{\$(\w+)\}/g, (_, key) => vars[key] ?? `{$${key}}`);
@@ -104,6 +105,10 @@ function extractLabelNames(payload: Record<string, unknown>): string[] {
 
 function getPaperclipApiUrl(): string {
   return process.env.PAPERCLIP_API_URL || "http://localhost:3100";
+}
+
+function buildToolResultIdempotencyKey(stepRunId: string, success: boolean): string {
+  return `tool-result:${stepRunId}:${success ? "success" : "failure"}`;
 }
 
 async function cancelActiveIssueRun(
@@ -153,10 +158,17 @@ async function abortWorkflowRunState(
   workflowRunId: string,
   companyId: string,
 ): Promise<void> {
+  const workflowRunRecord = await getWorkflowRun(ctx, workflowRunId);
+  if (!workflowRunRecord) {
+    throw new Error(`Workflow run not found: ${workflowRunId}`);
+  }
+
+  const workflowRun = toWorkflowRunRecord(workflowRunRecord);
   const stepRuns = (await listStepRuns(ctx, workflowRunId, companyId)).map(toWorkflowStepRunRecord);
   const completedAt = new Date().toISOString();
   let cancelledIssues = 0;
   let cancelledHeartbeats = 0;
+  let cancelledParentIssue = false;
 
   for (const stepRun of stepRuns) {
     if (TERMINAL_STEP_STATUSES.has(stepRun.data.status)) {
@@ -232,9 +244,39 @@ async function abortWorkflowRunState(
     status: RUN_STATUSES.aborted,
   });
 
+  const parentIssueId = typeof workflowRun.data.parentIssueId === "string"
+    ? workflowRun.data.parentIssueId.trim()
+    : "";
+  if (parentIssueId) {
+    try {
+      const parentIssue = await ctx.issues.get(parentIssueId, companyId);
+      if (parentIssue && parentIssue.status !== "done" && parentIssue.status !== "cancelled") {
+        await ctx.issues.update(parentIssueId, { status: "cancelled" } as IssueUpdatePatch, companyId);
+        await ctx.issues.createComment(
+          parentIssueId,
+          [
+            "### Workflow run aborted by workflow engine",
+            "",
+            "This parent issue was marked cancelled because the workflow run was aborted from the Workflow Engine UI.",
+          ].join("\n"),
+          companyId,
+        );
+        cancelledParentIssue = true;
+      }
+    } catch (error) {
+      ctx.logger.warn("Failed to mark workflow parent issue cancelled during abort", {
+        companyId,
+        error: summarizeError(error),
+        parentIssueId,
+        runId: workflowRunId,
+      });
+    }
+  }
+
   ctx.logger.info("Workflow run aborted from Workflow Engine UI", {
     cancelledHeartbeats,
     cancelledIssues,
+    cancelledParentIssue,
     companyId,
     runId: workflowRunId,
     stepCount: stepRuns.length,
@@ -1682,6 +1724,7 @@ const plugin = definePlugin({
     ctx.events.on(
       "plugin.insightflo.tool-registry.tool-execution-result" as Parameters<typeof ctx.events.on>[0],
       async (event: PluginEvent) => {
+        let toolResultKey = "";
         try {
           const payload = event.payload as Record<string, unknown>;
           const stepRunId = typeof payload.stepRunId === "string" ? payload.stepRunId.trim() : "";
@@ -1693,6 +1736,28 @@ const plugin = definePlugin({
             return;
           }
 
+          toolResultKey = buildToolResultIdempotencyKey(stepRunId, success);
+          if (inflightToolResultKeys.has(toolResultKey)) {
+            ctx.logger.info("Skipped duplicate in-flight tool result event", {
+              companyId: event.companyId,
+              stepRunId,
+              success,
+              toolName,
+            });
+            return;
+          }
+          inflightToolResultKeys.add(toolResultKey);
+
+          if (await checkIdempotency(ctx, toolResultKey, event.companyId)) {
+            ctx.logger.info("Skipped already-processed tool result event", {
+              companyId: event.companyId,
+              stepRunId,
+              success,
+              toolName,
+            });
+            return;
+          }
+
           const stepRunRecord = await getStepRun(ctx, stepRunId);
           if (!stepRunRecord) {
             ctx.logger.warn("Step run not found for tool result", { stepRunId });
@@ -1701,6 +1766,7 @@ const plugin = definePlugin({
 
           const typedStepRun = toWorkflowStepRunRecord(stepRunRecord);
           if (TERMINAL_STEP_STATUSES.has(typedStepRun.data.status)) {
+            await markIdempotency(ctx, toolResultKey, event.companyId);
             return;
           }
 
@@ -1718,23 +1784,23 @@ const plugin = definePlugin({
             toolName,
           });
 
-        if (success) {
-          const issueSyncResult = await syncWorkflowStepIssueStatusFromStepRun(
-            ctx,
-            updatedStepRun,
-            event.companyId,
-            "done",
-          );
-          if (issueSyncResult.completed) {
-            ctx.logger.info("Auto-completed workflow step issue from tool execution result", {
-              companyId: event.companyId,
-              issueId: issueSyncResult.issueId,
-              stepId: issueSyncResult.stepId,
-            });
-          }
+          if (success) {
+            const issueSyncResult = await syncWorkflowStepIssueStatusFromStepRun(
+              ctx,
+              updatedStepRun,
+              event.companyId,
+              "done",
+            );
+            if (issueSyncResult.completed) {
+              ctx.logger.info("Auto-completed workflow step issue from tool execution result", {
+                companyId: event.companyId,
+                issueId: issueSyncResult.issueId,
+                stepId: issueSyncResult.stepId,
+              });
+            }
 
-          await advanceWorkflow(ctx, updatedStepRun, event.companyId);
-        } else {
+            await advanceWorkflow(ctx, updatedStepRun, event.companyId);
+          } else {
             // Apply failure policy for failed tool steps
             const workflowRun = await getWorkflowRun(ctx, typedStepRun.data.runId);
             if (workflowRun) {
@@ -1762,11 +1828,17 @@ const plugin = definePlugin({
               }
             }
           }
+
+          await markIdempotency(ctx, toolResultKey, event.companyId);
         } catch (error) {
           ctx.logger.warn("Failed to handle tool-execution-result", {
             companyId: event.companyId,
             error: summarizeError(error),
           });
+        } finally {
+          if (toolResultKey) {
+            inflightToolResultKeys.delete(toolResultKey);
+          }
         }
       },
     );
