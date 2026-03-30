@@ -30925,9 +30925,14 @@ var columnStyle = {
   borderRadius: "22px",
   border: "1px solid color-mix(in srgb, var(--border, #d4d4d8) 78%, transparent)",
   background: "color-mix(in srgb, var(--card, #ffffff) 96%, transparent)",
-  boxShadow: "0 18px 48px rgba(15, 23, 42, 0.05)",
-  maxWidth: "calc(50% - 9px)"
+  boxShadow: "0 18px 48px rgba(15, 23, 42, 0.05)"
 };
+function getColumnStyle(columnCount) {
+  return {
+    ...columnStyle,
+    maxWidth: columnCount === 1 ? "calc(50% - 9px)" : "100%"
+  };
+}
 var missionCardStyle = {
   display: "grid",
   gap: "10px",
@@ -31139,12 +31144,13 @@ function ColumnPanel({
   name,
   missions,
   companyPrefix,
-  isUnassigned
+  isUnassigned,
+  columnCount
 }) {
   if (isUnassigned) {
     return /* @__PURE__ */ jsx2(UnassignedSection, { missions, companyPrefix });
   }
-  return /* @__PURE__ */ jsxs2("section", { style: columnStyle, children: [
+  return /* @__PURE__ */ jsxs2("section", { style: getColumnStyle(columnCount), children: [
     /* @__PURE__ */ jsxs2("div", { style: { display: "flex", justifyContent: "space-between", gap: "8px", alignItems: "center" }, children: [
       /* @__PURE__ */ jsx2("strong", { style: { fontSize: "17px" }, children: name }),
       /* @__PURE__ */ jsxs2("span", { style: { ...tinyMutedStyle, padding: "4px 8px", borderRadius: "999px", background: "color-mix(in srgb, var(--muted, #e5e7eb) 52%, transparent)" }, children: [
@@ -31180,6 +31186,7 @@ function ProjectGroupPanel({
   defaultExpanded
 }) {
   const [expanded, setExpanded] = useState2(defaultExpanded ?? true);
+  const visibleColumns = group2.columns.filter((c) => c.key !== COLUMN_UNASSIGNED);
   const totalMissions = group2.columns.reduce((sum, col) => sum + col.missionCount, 0);
   const totalTasks = group2.columns.reduce(
     (sum, col) => sum + col.missions.reduce(
@@ -31206,7 +31213,16 @@ function ProjectGroupPanel({
       ] })
     ] }),
     expanded ? /* @__PURE__ */ jsxs2(Fragment2, { children: [
-      /* @__PURE__ */ jsx2("section", { style: boardGridStyle, children: group2.columns.filter((c) => c.key !== COLUMN_UNASSIGNED).map((column) => /* @__PURE__ */ jsx2(ColumnPanel, { name: column.name, missions: column.missions, companyPrefix }, column.key)) }),
+      /* @__PURE__ */ jsx2("section", { style: boardGridStyle, children: visibleColumns.map((column) => /* @__PURE__ */ jsx2(
+        ColumnPanel,
+        {
+          name: column.name,
+          missions: column.missions,
+          companyPrefix,
+          columnCount: visibleColumns.length
+        },
+        column.key
+      )) }),
       group2.columns.filter((c) => c.key === COLUMN_UNASSIGNED).map((column) => /* @__PURE__ */ jsx2(ColumnPanel, { name: column.name, missions: column.missions, companyPrefix, isUnassigned: true }, column.key))
     ] }) : null
   ] });
@@ -31217,6 +31233,7 @@ function BoardContent({
   onRefresh,
   loading
 }) {
+  const visibleColumns = data4.columns.filter((c) => c.key !== COLUMN_UNASSIGNED);
   return /* @__PURE__ */ jsxs2("div", { style: pageStyle, children: [
     /* @__PURE__ */ jsxs2("section", { style: heroStyle, children: [
       /* @__PURE__ */ jsxs2("div", { style: { display: "grid", gap: "8px" }, children: [
@@ -31269,7 +31286,16 @@ function BoardContent({
       },
       group2.projectId ?? "__default__"
     )) : /* @__PURE__ */ jsxs2(Fragment2, { children: [
-      /* @__PURE__ */ jsx2("section", { style: boardGridStyle, children: data4.columns.filter((c) => c.key !== COLUMN_UNASSIGNED).map((column) => /* @__PURE__ */ jsx2(ColumnPanel, { name: column.name, missions: column.missions, companyPrefix: context.companyPrefix }, column.key)) }),
+      /* @__PURE__ */ jsx2("section", { style: boardGridStyle, children: visibleColumns.map((column) => /* @__PURE__ */ jsx2(
+        ColumnPanel,
+        {
+          name: column.name,
+          missions: column.missions,
+          companyPrefix: context.companyPrefix,
+          columnCount: visibleColumns.length
+        },
+        column.key
+      )) }),
       data4.columns.filter((c) => c.key === COLUMN_UNASSIGNED).map((column) => /* @__PURE__ */ jsx2(ColumnPanel, { name: column.name, missions: column.missions, companyPrefix: context.companyPrefix, isUnassigned: true }, column.key))
     ] })
   ] });

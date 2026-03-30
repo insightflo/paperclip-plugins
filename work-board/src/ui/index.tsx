@@ -53,8 +53,14 @@ const columnStyle: CSSProperties = {
   border: "1px solid color-mix(in srgb, var(--border, #d4d4d8) 78%, transparent)",
   background: "color-mix(in srgb, var(--card, #ffffff) 96%, transparent)",
   boxShadow: "0 18px 48px rgba(15, 23, 42, 0.05)",
-  maxWidth: "calc(50% - 9px)",
 };
+
+function getColumnStyle(columnCount?: number): CSSProperties {
+  return {
+    ...columnStyle,
+    maxWidth: columnCount === 1 ? "calc(50% - 9px)" : "100%",
+  };
+}
 
 const missionCardStyle: CSSProperties = {
   display: "grid",
@@ -325,18 +331,20 @@ function ColumnPanel({
   missions,
   companyPrefix,
   isUnassigned,
+  columnCount,
 }: {
   name: string;
   missions: MissionCard[];
   companyPrefix: string | null | undefined;
   isUnassigned?: boolean;
+  columnCount?: number;
 }) {
   if (isUnassigned) {
     return <UnassignedSection missions={missions} companyPrefix={companyPrefix} />;
   }
 
   return (
-    <section style={columnStyle}>
+    <section style={getColumnStyle(columnCount)}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: "8px", alignItems: "center" }}>
         <strong style={{ fontSize: "17px" }}>{name}</strong>
         <span style={{ ...tinyMutedStyle, padding: "4px 8px", borderRadius: "999px", background: "color-mix(in srgb, var(--muted, #e5e7eb) 52%, transparent)" }}>
@@ -384,6 +392,7 @@ function ProjectGroupPanel({
   defaultExpanded?: boolean;
 }) {
   const [expanded, setExpanded] = useState(defaultExpanded ?? true);
+  const visibleColumns = group.columns.filter((c) => c.key !== COLUMN_UNASSIGNED);
   const totalMissions = group.columns.reduce((sum, col) => sum + col.missionCount, 0);
   const totalTasks = group.columns.reduce(
     (sum, col) => sum + col.missions.reduce(
@@ -411,8 +420,14 @@ function ProjectGroupPanel({
       {expanded ? (
         <>
           <section style={boardGridStyle}>
-            {group.columns.filter((c) => c.key !== COLUMN_UNASSIGNED).map((column) => (
-              <ColumnPanel key={column.key} name={column.name} missions={column.missions} companyPrefix={companyPrefix} />
+            {visibleColumns.map((column) => (
+              <ColumnPanel
+                key={column.key}
+                name={column.name}
+                missions={column.missions}
+                companyPrefix={companyPrefix}
+                columnCount={visibleColumns.length}
+              />
             ))}
           </section>
           {group.columns.filter((c) => c.key === COLUMN_UNASSIGNED).map((column) => (
@@ -435,6 +450,8 @@ function BoardContent({
   onRefresh: () => void;
   loading: boolean;
 }) {
+  const visibleColumns = data.columns.filter((c) => c.key !== COLUMN_UNASSIGNED);
+
   return (
     <div style={pageStyle}>
       <section style={heroStyle}>
@@ -497,8 +514,14 @@ function BoardContent({
       ) : (
         <>
           <section style={boardGridStyle}>
-            {data.columns.filter((c) => c.key !== COLUMN_UNASSIGNED).map((column) => (
-              <ColumnPanel key={column.key} name={column.name} missions={column.missions} companyPrefix={context.companyPrefix} />
+            {visibleColumns.map((column) => (
+              <ColumnPanel
+                key={column.key}
+                name={column.name}
+                missions={column.missions}
+                companyPrefix={context.companyPrefix}
+                columnCount={visibleColumns.length}
+              />
             ))}
           </section>
           {data.columns.filter((c) => c.key === COLUMN_UNASSIGNED).map((column) => (
