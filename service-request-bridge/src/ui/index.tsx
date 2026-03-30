@@ -106,7 +106,7 @@ const tabStyle: CSSProperties = {
   gap: "12px",
   padding: "14px",
   fontFamily: "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
-  color: "#111827",
+  color: "#e5e7eb",
 };
 
 const cardStyle: CSSProperties = {
@@ -114,14 +114,14 @@ const cardStyle: CSSProperties = {
   gap: "10px",
   padding: "12px",
   borderRadius: "10px",
-  border: "1px solid #e5e7eb",
-  background: "#ffffff",
+  border: "1px solid rgba(255, 255, 255, 0.12)",
+  background: "rgba(255, 255, 255, 0.04)",
 };
 
 const mutedStyle: CSSProperties = {
   margin: 0,
   fontSize: "12px",
-  color: "#6b7280",
+  color: "#9ca3af",
 };
 
 const tableStyle: CSSProperties = {
@@ -135,23 +135,25 @@ const thStyle: CSSProperties = {
   fontSize: "11px",
   letterSpacing: "0.04em",
   textTransform: "uppercase",
-  color: "#6b7280",
+  color: "#9ca3af",
   padding: "8px 10px",
-  borderBottom: "1px solid #e5e7eb",
+  borderBottom: "1px solid rgba(255, 255, 255, 0.12)",
 };
 
 const tdStyle: CSSProperties = {
   verticalAlign: "top",
   padding: "8px 10px",
-  borderBottom: "1px solid #f3f4f6",
+  borderBottom: "1px solid rgba(255, 255, 255, 0.08)",
 };
 
 const inputStyle: CSSProperties = {
   width: "100%",
   padding: "8px 10px",
-  border: "1px solid #d1d5db",
+  border: "1px solid rgba(255, 255, 255, 0.16)",
   borderRadius: "8px",
   fontSize: "13px",
+  background: "rgba(17, 24, 39, 0.9)",
+  color: "#f9fafb",
 };
 
 const buttonStyle: CSSProperties = {
@@ -169,10 +171,10 @@ const widgetStyle: CSSProperties = {
   display: "grid",
   gap: "10px",
   padding: "12px",
-  border: "1px solid #e5e7eb",
+  border: "1px solid rgba(255, 255, 255, 0.12)",
   borderRadius: "12px",
-  background: "#ffffff",
-  color: "#111827",
+  background: "rgba(255, 255, 255, 0.04)",
+  color: "#e5e7eb",
   fontFamily: "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
 };
 
@@ -195,8 +197,8 @@ function statusBadgeStyle(connected: boolean): CSSProperties {
         gap: "4px",
         borderRadius: "999px",
         padding: "2px 8px",
-        background: "#f3f4f6",
-        color: "#4b5563",
+        background: "rgba(255, 255, 255, 0.08)",
+        color: "#d1d5db",
         fontSize: "11px",
         fontWeight: 700,
       };
@@ -210,6 +212,14 @@ function directionLabel(direction: string): string {
     return "remote -> local";
   }
   return "two-way";
+}
+
+function settingsHref(companyPrefix?: string | null): string {
+  return companyPrefix ? `/${companyPrefix}/bridge-settings` : "/bridge-settings";
+}
+
+function bridgeHref(companyPrefix?: string | null): string {
+  return companyPrefix ? `/${companyPrefix}/service-request-bridge` : "/service-request-bridge";
 }
 
 function resolveIssueId(props: GenericIssueTabProps): string {
@@ -279,7 +289,8 @@ function BridgeHelpSection(): JSX.Element {
           <p style={{ ...mutedStyle, fontWeight: 600, marginTop: "12px" }}>설정</p>
           <ul style={{ margin: "4px 0", paddingLeft: "20px" }}>
             <li><strong>Provider Company</strong>: 서비스 제공 회사 이름</li>
-            <li><strong>Requester Label</strong>: 자동 미러링 트리거 라벨 (기본: 유지보수)</li>
+            <li><strong>Requester Issue Label Aliases</strong>: 요청 이슈에 이 라벨 별칭 중 하나가 붙으면 자동 미러링</li>
+            <li><strong>Requester Title Prefixes</strong>: 요청 이슈 제목이 이 prefix 중 하나로 시작해도 자동 미러링</li>
             <li><strong>Workflow Trigger Label</strong>: 미러 이슈에 붙일 워크플로우 트리거 라벨</li>
           </ul>
 
@@ -298,6 +309,7 @@ function BridgeHelpSection(): JSX.Element {
 export function ServiceRequestBridgeListTab(props: GenericIssueTabProps): JSX.Element {
   const host = useHostContext();
   const companyId = host.companyId ?? props.context?.companyId ?? "";
+  const companyPrefix = host.companyPrefix ?? props.context?.companyPrefix ?? "";
   const issueIds = useMemo(() => resolveIssueIds(props), [props.issueIds, props.issues]);
 
   const snapshot = usePluginData<ListTabSnapshot>(DATA_KEYS.listTab, {
@@ -310,9 +322,14 @@ export function ServiceRequestBridgeListTab(props: GenericIssueTabProps): JSX.El
       <section style={cardStyle}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "center" }}>
           <strong style={{ fontSize: "14px" }}>Service Bridge 상태</strong>
-          <button type="button" style={buttonStyle} onClick={snapshot.refresh}>
-            새로고침
-          </button>
+          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            <a href={settingsHref(companyPrefix)} style={{ ...buttonStyle, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
+              설정
+            </a>
+            <button type="button" style={buttonStyle} onClick={snapshot.refresh}>
+              새로고침
+            </button>
+          </div>
         </div>
         <DataError error={snapshot.error} />
         {snapshot.loading ? <p style={mutedStyle}>연결 상태를 불러오는 중...</p> : null}
@@ -390,6 +407,7 @@ export function ServiceRequestBridgeListTab(props: GenericIssueTabProps): JSX.El
 export function ServiceRequestBridgeDetailTab(props: GenericIssueTabProps): JSX.Element {
   const host = useHostContext();
   const companyId = host.companyId ?? props.context?.companyId ?? "";
+  const companyPrefix = host.companyPrefix ?? props.context?.companyPrefix ?? "";
   const issueId = resolveIssueId(props);
 
   const snapshot = usePluginData<DetailTabSnapshot>(DATA_KEYS.detailTab, {
@@ -402,8 +420,25 @@ export function ServiceRequestBridgeDetailTab(props: GenericIssueTabProps): JSX.
   const [remoteCompanyId, setRemoteCompanyId] = useState("");
   const [remoteIssueId, setRemoteIssueId] = useState("");
   const [direction, setDirection] = useState<string>(BRIDGE_DIRECTIONS.twoWay);
+  const [editingBridgeId, setEditingBridgeId] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+
+  function loadLinkIntoForm(link: DetailTabSnapshot["links"][number]): void {
+    setEditingBridgeId(link.bridgeId);
+    setRemoteCompanyId(link.remoteCompanyId);
+    setRemoteIssueId(link.remoteIdentifier ?? link.remoteIssueId);
+    setDirection(link.direction);
+    setStatusMessage("");
+    setErrorMessage("");
+  }
+
+  function resetForm(): void {
+    setEditingBridgeId("");
+    setRemoteCompanyId("");
+    setRemoteIssueId("");
+    setDirection(BRIDGE_DIRECTIONS.twoWay);
+  }
 
   async function onCreateLink(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault();
@@ -424,8 +459,8 @@ export function ServiceRequestBridgeDetailTab(props: GenericIssueTabProps): JSX.
         createdBy: "service-request-bridge-ui",
       });
 
-      setStatusMessage("Bridge link saved.");
-      setRemoteIssueId("");
+      setStatusMessage(editingBridgeId ? "Bridge link updated." : "Bridge link saved.");
+      resetForm();
       await snapshot.refresh();
     } catch (error) {
       setErrorMessage(error instanceof Error ? (error as Error)?.message ?? String(error) : String(error));
@@ -437,9 +472,14 @@ export function ServiceRequestBridgeDetailTab(props: GenericIssueTabProps): JSX.
       <section style={cardStyle}>
         <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "center" }}>
           <strong style={{ fontSize: "14px" }}>연결된 상대 회사 이슈</strong>
-          <button type="button" style={buttonStyle} onClick={snapshot.refresh}>
-            새로고침
-          </button>
+          <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
+            <a href={settingsHref(companyPrefix)} style={{ ...buttonStyle, textDecoration: "none", display: "inline-flex", alignItems: "center" }}>
+              설정
+            </a>
+            <button type="button" style={buttonStyle} onClick={snapshot.refresh}>
+              새로고침
+            </button>
+          </div>
         </div>
 
         {snapshot.loading ? <p style={mutedStyle}>연결 정보를 불러오는 중...</p> : null}
@@ -478,7 +518,18 @@ export function ServiceRequestBridgeDetailTab(props: GenericIssueTabProps): JSX.
                   </td>
                   <td style={tdStyle}>{link.remoteStatus ?? "unknown"}</td>
                   <td style={tdStyle}>{directionLabel(link.direction)}</td>
-                  <td style={tdStyle}>{formatDateTime(link.lastSyncedAt ?? link.updatedAt)}</td>
+                  <td style={tdStyle}>
+                    <div style={{ display: "grid", gap: "8px" }}>
+                      <span>{formatDateTime(link.lastSyncedAt ?? link.updatedAt)}</span>
+                      <button
+                        type="button"
+                        style={{ ...buttonStyle, padding: "6px 10px", fontSize: "12px" }}
+                        onClick={() => loadLinkIntoForm(link)}
+                      >
+                        수정
+                      </button>
+                    </div>
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -489,7 +540,17 @@ export function ServiceRequestBridgeDetailTab(props: GenericIssueTabProps): JSX.
       </section>
 
       <section style={cardStyle}>
-        <strong style={{ fontSize: "14px" }}>Bridge 연결 생성</strong>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "center" }}>
+          <strong style={{ fontSize: "14px" }}>{editingBridgeId ? "Bridge 연결 수정" : "Bridge 연결 생성"}</strong>
+          {editingBridgeId ? (
+            <button type="button" style={{ ...buttonStyle, padding: "6px 10px", fontSize: "12px" }} onClick={resetForm}>
+              취소
+            </button>
+          ) : null}
+        </div>
+        <p style={mutedStyle}>
+          설정은 별도 설정 페이지에서 관리합니다. 기존 링크는 불러와서 방향을 수정할 수 있습니다.
+        </p>
         <form onSubmit={(event) => void onCreateLink(event)} style={{ display: "grid", gap: "10px" }}>
           <label style={{ display: "grid", gap: "6px" }}>
             <span style={mutedStyle}>Remote company</span>
@@ -531,7 +592,7 @@ export function ServiceRequestBridgeDetailTab(props: GenericIssueTabProps): JSX.
           </label>
 
           <div>
-            <button type="submit" style={buttonStyle}>Bridge 저장</button>
+            <button type="submit" style={buttonStyle}>{editingBridgeId ? "Bridge 수정 저장" : "Bridge 저장"}</button>
           </div>
         </form>
       </section>
@@ -581,8 +642,122 @@ export function BridgeDashboardWidget({ context }: PluginWidgetProps): JSX.Eleme
   );
 }
 
+export function BridgeSettingsTab(): JSX.Element {
+  const host = useHostContext();
+  const snapshot = usePluginData<{
+    providerCompanyName: string;
+    providerProjectName: string;
+    requesterLabelNames: string[];
+    requesterTitlePrefixes: string[];
+    requesterLabelName?: string;
+    autoCreateMirrorIssue: boolean;
+    workflowTriggerLabel: string;
+  }>(DATA_KEYS.settingsGet, {});
+
+  const [providerCompanyName, setProviderCompanyName] = useState("");
+  const [providerProjectName, setProviderProjectName] = useState("");
+  const [requesterLabelNamesText, setRequesterLabelNamesText] = useState("");
+  const [requesterTitlePrefixesText, setRequesterTitlePrefixesText] = useState("");
+  const [autoCreateMirrorIssue, setAutoCreateMirrorIssue] = useState(true);
+  const [workflowTriggerLabel, setWorkflowTriggerLabel] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [statusMsg, setStatusMsg] = useState("");
+
+  function parseAliases(value: string): string[] {
+    return [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))];
+  }
+
+  if (snapshot.data && !loaded) {
+    setProviderCompanyName(snapshot.data.providerCompanyName || "");
+    setProviderProjectName(snapshot.data.providerProjectName || "");
+    setRequesterLabelNamesText(
+      (snapshot.data.requesterLabelNames && snapshot.data.requesterLabelNames.length > 0
+        ? snapshot.data.requesterLabelNames
+        : snapshot.data.requesterLabelName
+          ? [snapshot.data.requesterLabelName]
+          : []
+      ).join(", "),
+    );
+    setRequesterTitlePrefixesText(
+      (snapshot.data.requesterTitlePrefixes && snapshot.data.requesterTitlePrefixes.length > 0
+        ? snapshot.data.requesterTitlePrefixes
+        : snapshot.data.requesterLabelName
+          ? [snapshot.data.requesterLabelName]
+          : []
+      ).join(", "),
+    );
+    setAutoCreateMirrorIssue(snapshot.data.autoCreateMirrorIssue ?? true);
+    setWorkflowTriggerLabel(snapshot.data.workflowTriggerLabel || "");
+    setLoaded(true);
+  }
+
+  async function onSave(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault();
+    setStatusMsg("");
+    try {
+      const pluginId = (host as unknown as Record<string, unknown>).pluginId ?? "";
+      const res = await fetch(`/api/plugins/${pluginId}/config`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          configJson: {
+            providerCompanyName,
+            providerProjectName,
+            requesterLabelNames: parseAliases(requesterLabelNamesText),
+            requesterTitlePrefixes: parseAliases(requesterTitlePrefixesText),
+            autoCreateMirrorIssue,
+            workflowTriggerLabel,
+          },
+        }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setStatusMsg("설정이 저장되었습니다.");
+    } catch (err) {
+      setStatusMsg(`오류: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+
+  return (
+    <div style={tabStyle}>
+      <section style={cardStyle}>
+        <strong style={{ fontSize: "14px" }}>Service Bridge 설정</strong>
+        {snapshot.loading ? <p style={mutedStyle}>로딩 중...</p> : null}
+        <DataError error={snapshot.error} />
+        <form onSubmit={(e) => void onSave(e)} style={{ display: "grid", gap: "12px" }}>
+          <label style={{ display: "grid", gap: "4px" }}>
+            <span style={mutedStyle}>Provider Company (서비스 제공 회사)</span>
+            <input style={inputStyle} value={providerCompanyName} onChange={(e) => setProviderCompanyName(e.target.value)} placeholder="예: 보수팀" />
+          </label>
+          <label style={{ display: "grid", gap: "4px" }}>
+            <span style={mutedStyle}>Provider Project (이슈를 생성할 프로젝트)</span>
+            <input style={inputStyle} value={providerProjectName} onChange={(e) => setProviderProjectName(e.target.value)} placeholder="예: 가즈아" />
+          </label>
+          <label style={{ display: "grid", gap: "4px" }}>
+            <span style={mutedStyle}>Requester Issue Label Aliases (요청 이슈 라벨 별칭)</span>
+            <input style={inputStyle} value={requesterLabelNamesText} onChange={(e) => setRequesterLabelNamesText(e.target.value)} placeholder="예: 유지보수, maintenance" />
+          </label>
+          <label style={{ display: "grid", gap: "4px" }}>
+            <span style={mutedStyle}>Requester Title Prefixes (요청 이슈 제목 prefix)</span>
+            <input style={inputStyle} value={requesterTitlePrefixesText} onChange={(e) => setRequesterTitlePrefixesText(e.target.value)} placeholder="예: 유지보수, maintenance" />
+          </label>
+          <label style={{ display: "grid", gap: "4px" }}>
+            <span style={mutedStyle}>Workflow Trigger Label (미러 이슈에 붙일 라벨)</span>
+            <input style={inputStyle} value={workflowTriggerLabel} onChange={(e) => setWorkflowTriggerLabel(e.target.value)} placeholder="(선택)" />
+          </label>
+          <label style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+            <input type="checkbox" checked={autoCreateMirrorIssue} onChange={(e) => setAutoCreateMirrorIssue(e.target.checked)} />
+            <span style={mutedStyle}>Auto Create Mirror Issue</span>
+          </label>
+          {statusMsg ? <p style={{ ...mutedStyle, color: statusMsg.startsWith("오류") ? "#b91c1c" : "#166534" }}>{statusMsg}</p> : null}
+          <div><button type="submit" style={buttonStyle}>저장</button></div>
+        </form>
+      </section>
+    </div>
+  );
+}
+
 export function BridgeSidebarLink({ context }: { context: { companyPrefix?: string | null } }) {
-  const href = context.companyPrefix ? `/${context.companyPrefix}/service-request-bridge` : "/service-request-bridge";
+  const href = bridgeHref(context.companyPrefix);
   const isActive = typeof window !== "undefined" && window.location.pathname === href;
   return (
     <a

@@ -94,11 +94,53 @@ function isMatchingLabel(labels, expectedLabelName) {
     }
     return labels.some((label) => normalizeName(label) === expected);
 }
+function hasTitlePrefix(title, expectedPrefix) {
+    const normalizedTitle = title.trim();
+    const normalizedPrefix = expectedPrefix.trim();
+    if (!normalizedTitle || !normalizedPrefix) {
+        return false;
+    }
+    return normalizedTitle.startsWith(`[${normalizedPrefix}]`);
+}
+function normalizeAliasList(value) {
+    const items = Array.isArray(value)
+        ? value
+        : typeof value === "string"
+            ? value.split(",")
+            : [];
+    const cleaned = items
+        .map((item) => typeof item === "string" ? item.trim() : "")
+        .filter(Boolean);
+    return [...new Set(cleaned)];
+}
+function hasAnyMatchingLabel(labels, expectedLabelNames) {
+    return expectedLabelNames.some((label) => isMatchingLabel(labels, label));
+}
+function hasAnyTitlePrefix(title, expectedPrefixes) {
+    return expectedPrefixes.some((prefix) => hasTitlePrefix(title, prefix));
+}
 async function getBridgeConfig(ctx) {
     const raw = asRecord(await ctx.config.get());
+    const legacyLabelName = asString(raw.requesterLabelName);
+    const requesterLabelNames = normalizeAliasList(raw.requesterLabelNames);
+    const requesterTitlePrefixes = normalizeAliasList(raw.requesterTitlePrefixes);
+    if (requesterLabelNames.length === 0 && legacyLabelName) {
+        requesterLabelNames.push(legacyLabelName);
+    }
+    if (requesterTitlePrefixes.length === 0 && legacyLabelName) {
+        requesterTitlePrefixes.push(legacyLabelName);
+    }
+    if (requesterLabelNames.length === 0) {
+        requesterLabelNames.push(DEFAULT_REQUESTER_LABEL);
+    }
+    if (requesterTitlePrefixes.length === 0) {
+        requesterTitlePrefixes.push(DEFAULT_REQUESTER_LABEL);
+    }
     return {
         providerCompanyName: asString(raw.providerCompanyName),
-        requesterLabelName: asString(raw.requesterLabelName) || DEFAULT_REQUESTER_LABEL,
+        providerProjectName: asString(raw.providerProjectName),
+        requesterLabelNames,
+        requesterTitlePrefixes,
         autoCreateMirrorIssue: asBoolean(raw.autoCreateMirrorIssue, true),
         workflowTriggerLabel: asString(raw.workflowTriggerLabel),
     };
@@ -503,7 +545,9 @@ async function handleIssueCreated(ctx, event) {
         ...getLabelNames(sourceIssue?.labels),
         ...refs.labels,
     ];
-    if (!sourceTitle || !isMatchingLabel(sourceLabels, config.requesterLabelName)) {
+    const matchesRequesterSignal = Boolean(sourceTitle) && (hasAnyMatchingLabel(sourceLabels, config.requesterLabelNames) ||
+        hasAnyTitlePrefix(sourceTitle, config.requesterTitlePrefixes));
+    if (!matchesRequesterSignal) {
         if (eventId) {
             await markEventProcessed(ctx, refs.companyId, eventId);
         }
@@ -553,6 +597,14 @@ async function handleIssueCreated(ctx, event) {
     };
     if (workflowLabel) {
         mirrorCreateParams.labels = [workflowLabel];
+    }
+    // Resolve provider project by name and attach projectId to mirror issue
+    if (config.providerProjectName) {
+        const providerProjects = await ctx.projects.list({ companyId: providerCompany.id });
+        const targetProject = providerProjects.find((p) => p.name === config.providerProjectName);
+        if (targetProject) {
+            mirrorCreateParams.projectId = targetProject.id;
+        }
     }
     const mirrorIssue = await ctx.issues.create(mirrorCreateParams);
     await upsertBridgePair(ctx, {
@@ -623,11 +675,16 @@ function registerDataHandlers(ctx) {
     registerDataHandler(ctx, DATA_KEYS.createLink, async (params) => {
         return await createBridgeLinkFromParams(ctx, params);
     });
+    registerDataHandler(ctx, DATA_KEYS.settingsGet, async () => {
+        const config = await getBridgeConfig(ctx);
+        return config;
+    });
 }
 function registerActionHandlers(ctx) {
     registerActionHandler(ctx, ACTION_KEYS.createLink, async (params) => {
         return await createBridgeLinkFromParams(ctx, params);
     });
+    // Settings save is handled by UI directly via /api/plugins/:id/config
 }
 const plugin = definePlugin({
     async setup(ctx) {

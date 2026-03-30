@@ -19,10 +19,12 @@ var DATA_KEYS = {
   listTab: "service-request-bridge.list-tab",
   detailTab: "service-request-bridge.detail-tab",
   dashboardWidget: "service-request-bridge.dashboard-widget",
+  settingsGet: "service-request-bridge.settings-get",
   createLink: "service-request-bridge.create-link"
 };
 var ACTION_KEYS = {
-  createLink: DATA_KEYS.createLink
+  createLink: DATA_KEYS.createLink,
+  settingsSave: "service-request-bridge.settings-save"
 };
 var SYNC_STAMP_TTL_MS = 10 * 60 * 1e3;
 
@@ -33,20 +35,20 @@ var tabStyle = {
   gap: "12px",
   padding: "14px",
   fontFamily: "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif",
-  color: "#111827"
+  color: "#e5e7eb"
 };
 var cardStyle = {
   display: "grid",
   gap: "10px",
   padding: "12px",
   borderRadius: "10px",
-  border: "1px solid #e5e7eb",
-  background: "#ffffff"
+  border: "1px solid rgba(255, 255, 255, 0.12)",
+  background: "rgba(255, 255, 255, 0.04)"
 };
 var mutedStyle = {
   margin: 0,
   fontSize: "12px",
-  color: "#6b7280"
+  color: "#9ca3af"
 };
 var tableStyle = {
   width: "100%",
@@ -58,21 +60,23 @@ var thStyle = {
   fontSize: "11px",
   letterSpacing: "0.04em",
   textTransform: "uppercase",
-  color: "#6b7280",
+  color: "#9ca3af",
   padding: "8px 10px",
-  borderBottom: "1px solid #e5e7eb"
+  borderBottom: "1px solid rgba(255, 255, 255, 0.12)"
 };
 var tdStyle = {
   verticalAlign: "top",
   padding: "8px 10px",
-  borderBottom: "1px solid #f3f4f6"
+  borderBottom: "1px solid rgba(255, 255, 255, 0.08)"
 };
 var inputStyle = {
   width: "100%",
   padding: "8px 10px",
-  border: "1px solid #d1d5db",
+  border: "1px solid rgba(255, 255, 255, 0.16)",
   borderRadius: "8px",
-  fontSize: "13px"
+  fontSize: "13px",
+  background: "rgba(17, 24, 39, 0.9)",
+  color: "#f9fafb"
 };
 var buttonStyle = {
   padding: "8px 12px",
@@ -88,10 +92,10 @@ var widgetStyle = {
   display: "grid",
   gap: "10px",
   padding: "12px",
-  border: "1px solid #e5e7eb",
+  border: "1px solid rgba(255, 255, 255, 0.12)",
   borderRadius: "12px",
-  background: "#ffffff",
-  color: "#111827",
+  background: "rgba(255, 255, 255, 0.04)",
+  color: "#e5e7eb",
   fontFamily: "ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, sans-serif"
 };
 function statusBadgeStyle(connected) {
@@ -111,8 +115,8 @@ function statusBadgeStyle(connected) {
     gap: "4px",
     borderRadius: "999px",
     padding: "2px 8px",
-    background: "#f3f4f6",
-    color: "#4b5563",
+    background: "rgba(255, 255, 255, 0.08)",
+    color: "#d1d5db",
     fontSize: "11px",
     fontWeight: 700
   };
@@ -125,6 +129,12 @@ function directionLabel(direction) {
     return "remote -> local";
   }
   return "two-way";
+}
+function settingsHref(companyPrefix) {
+  return companyPrefix ? `/${companyPrefix}/bridge-settings` : "/bridge-settings";
+}
+function bridgeHref(companyPrefix) {
+  return companyPrefix ? `/${companyPrefix}/service-request-bridge` : "/service-request-bridge";
 }
 function resolveIssueId(props) {
   return props.issueId ?? props.selectedIssueId ?? props.issue?.id ?? "";
@@ -188,8 +198,12 @@ function BridgeHelpSection() {
           ": \uC11C\uBE44\uC2A4 \uC81C\uACF5 \uD68C\uC0AC \uC774\uB984"
         ] }),
         /* @__PURE__ */ jsxs("li", { children: [
-          /* @__PURE__ */ jsx("strong", { children: "Requester Label" }),
-          ": \uC790\uB3D9 \uBBF8\uB7EC\uB9C1 \uD2B8\uB9AC\uAC70 \uB77C\uBCA8 (\uAE30\uBCF8: \uC720\uC9C0\uBCF4\uC218)"
+          /* @__PURE__ */ jsx("strong", { children: "Requester Issue Label Aliases" }),
+          ": \uC694\uCCAD \uC774\uC288\uC5D0 \uC774 \uB77C\uBCA8 \uBCC4\uCE6D \uC911 \uD558\uB098\uAC00 \uBD99\uC73C\uBA74 \uC790\uB3D9 \uBBF8\uB7EC\uB9C1"
+        ] }),
+        /* @__PURE__ */ jsxs("li", { children: [
+          /* @__PURE__ */ jsx("strong", { children: "Requester Title Prefixes" }),
+          ": \uC694\uCCAD \uC774\uC288 \uC81C\uBAA9\uC774 \uC774 prefix \uC911 \uD558\uB098\uB85C \uC2DC\uC791\uD574\uB3C4 \uC790\uB3D9 \uBBF8\uB7EC\uB9C1"
         ] }),
         /* @__PURE__ */ jsxs("li", { children: [
           /* @__PURE__ */ jsx("strong", { children: "Workflow Trigger Label" }),
@@ -217,6 +231,7 @@ function BridgeHelpSection() {
 function ServiceRequestBridgeListTab(props) {
   const host = useHostContext();
   const companyId = host.companyId ?? props.context?.companyId ?? "";
+  const companyPrefix = host.companyPrefix ?? props.context?.companyPrefix ?? "";
   const issueIds = useMemo(() => resolveIssueIds(props), [props.issueIds, props.issues]);
   const snapshot = usePluginData(DATA_KEYS.listTab, {
     companyId,
@@ -226,7 +241,10 @@ function ServiceRequestBridgeListTab(props) {
     /* @__PURE__ */ jsxs("section", { style: cardStyle, children: [
       /* @__PURE__ */ jsxs("div", { style: { display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "center" }, children: [
         /* @__PURE__ */ jsx("strong", { style: { fontSize: "14px" }, children: "Service Bridge \uC0C1\uD0DC" }),
-        /* @__PURE__ */ jsx("button", { type: "button", style: buttonStyle, onClick: snapshot.refresh, children: "\uC0C8\uB85C\uACE0\uCE68" })
+        /* @__PURE__ */ jsxs("div", { style: { display: "flex", gap: "8px", alignItems: "center" }, children: [
+          /* @__PURE__ */ jsx("a", { href: settingsHref(companyPrefix), style: { ...buttonStyle, textDecoration: "none", display: "inline-flex", alignItems: "center" }, children: "\uC124\uC815" }),
+          /* @__PURE__ */ jsx("button", { type: "button", style: buttonStyle, onClick: snapshot.refresh, children: "\uC0C8\uB85C\uACE0\uCE68" })
+        ] })
       ] }),
       /* @__PURE__ */ jsx(DataError, { error: snapshot.error }),
       snapshot.loading ? /* @__PURE__ */ jsx("p", { style: mutedStyle, children: "\uC5F0\uACB0 \uC0C1\uD0DC\uB97C \uBD88\uB7EC\uC624\uB294 \uC911..." }) : null,
@@ -279,6 +297,7 @@ function ServiceRequestBridgeListTab(props) {
 function ServiceRequestBridgeDetailTab(props) {
   const host = useHostContext();
   const companyId = host.companyId ?? props.context?.companyId ?? "";
+  const companyPrefix = host.companyPrefix ?? props.context?.companyPrefix ?? "";
   const issueId = resolveIssueId(props);
   const snapshot = usePluginData(DATA_KEYS.detailTab, {
     companyId,
@@ -288,8 +307,23 @@ function ServiceRequestBridgeDetailTab(props) {
   const [remoteCompanyId, setRemoteCompanyId] = useState("");
   const [remoteIssueId, setRemoteIssueId] = useState("");
   const [direction, setDirection] = useState(BRIDGE_DIRECTIONS.twoWay);
+  const [editingBridgeId, setEditingBridgeId] = useState("");
   const [statusMessage, setStatusMessage] = useState("");
   const [errorMessage, setErrorMessage] = useState("");
+  function loadLinkIntoForm(link) {
+    setEditingBridgeId(link.bridgeId);
+    setRemoteCompanyId(link.remoteCompanyId);
+    setRemoteIssueId(link.remoteIdentifier ?? link.remoteIssueId);
+    setDirection(link.direction);
+    setStatusMessage("");
+    setErrorMessage("");
+  }
+  function resetForm() {
+    setEditingBridgeId("");
+    setRemoteCompanyId("");
+    setRemoteIssueId("");
+    setDirection(BRIDGE_DIRECTIONS.twoWay);
+  }
   async function onCreateLink(event) {
     event.preventDefault();
     setStatusMessage("");
@@ -306,8 +340,8 @@ function ServiceRequestBridgeDetailTab(props) {
         direction,
         createdBy: "service-request-bridge-ui"
       });
-      setStatusMessage("Bridge link saved.");
-      setRemoteIssueId("");
+      setStatusMessage(editingBridgeId ? "Bridge link updated." : "Bridge link saved.");
+      resetForm();
       await snapshot.refresh();
     } catch (error) {
       setErrorMessage(error instanceof Error ? error?.message ?? String(error) : String(error));
@@ -317,7 +351,10 @@ function ServiceRequestBridgeDetailTab(props) {
     /* @__PURE__ */ jsxs("section", { style: cardStyle, children: [
       /* @__PURE__ */ jsxs("div", { style: { display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "center" }, children: [
         /* @__PURE__ */ jsx("strong", { style: { fontSize: "14px" }, children: "\uC5F0\uACB0\uB41C \uC0C1\uB300 \uD68C\uC0AC \uC774\uC288" }),
-        /* @__PURE__ */ jsx("button", { type: "button", style: buttonStyle, onClick: snapshot.refresh, children: "\uC0C8\uB85C\uACE0\uCE68" })
+        /* @__PURE__ */ jsxs("div", { style: { display: "flex", gap: "8px", alignItems: "center" }, children: [
+          /* @__PURE__ */ jsx("a", { href: settingsHref(companyPrefix), style: { ...buttonStyle, textDecoration: "none", display: "inline-flex", alignItems: "center" }, children: "\uC124\uC815" }),
+          /* @__PURE__ */ jsx("button", { type: "button", style: buttonStyle, onClick: snapshot.refresh, children: "\uC0C8\uB85C\uACE0\uCE68" })
+        ] })
       ] }),
       snapshot.loading ? /* @__PURE__ */ jsx("p", { style: mutedStyle, children: "\uC5F0\uACB0 \uC815\uBCF4\uB97C \uBD88\uB7EC\uC624\uB294 \uC911..." }) : null,
       /* @__PURE__ */ jsx(DataError, { error: snapshot.error }),
@@ -345,12 +382,27 @@ function ServiceRequestBridgeDetailTab(props) {
           ] }) }),
           /* @__PURE__ */ jsx("td", { style: tdStyle, children: link.remoteStatus ?? "unknown" }),
           /* @__PURE__ */ jsx("td", { style: tdStyle, children: directionLabel(link.direction) }),
-          /* @__PURE__ */ jsx("td", { style: tdStyle, children: formatDateTime(link.lastSyncedAt ?? link.updatedAt) })
+          /* @__PURE__ */ jsx("td", { style: tdStyle, children: /* @__PURE__ */ jsxs("div", { style: { display: "grid", gap: "8px" }, children: [
+            /* @__PURE__ */ jsx("span", { children: formatDateTime(link.lastSyncedAt ?? link.updatedAt) }),
+            /* @__PURE__ */ jsx(
+              "button",
+              {
+                type: "button",
+                style: { ...buttonStyle, padding: "6px 10px", fontSize: "12px" },
+                onClick: () => loadLinkIntoForm(link),
+                children: "\uC218\uC815"
+              }
+            )
+          ] }) })
         ] }, link.bridgeId)) })
       ] }) : /* @__PURE__ */ jsx("p", { style: mutedStyle, children: "\uC5F0\uACB0\uB41C \uBE0C\uB9AC\uC9C0\uAC00 \uC544\uC9C1 \uC5C6\uC2B5\uB2C8\uB2E4." })
     ] }),
     /* @__PURE__ */ jsxs("section", { style: cardStyle, children: [
-      /* @__PURE__ */ jsx("strong", { style: { fontSize: "14px" }, children: "Bridge \uC5F0\uACB0 \uC0DD\uC131" }),
+      /* @__PURE__ */ jsxs("div", { style: { display: "flex", justifyContent: "space-between", gap: "12px", alignItems: "center" }, children: [
+        /* @__PURE__ */ jsx("strong", { style: { fontSize: "14px" }, children: editingBridgeId ? "Bridge \uC5F0\uACB0 \uC218\uC815" : "Bridge \uC5F0\uACB0 \uC0DD\uC131" }),
+        editingBridgeId ? /* @__PURE__ */ jsx("button", { type: "button", style: { ...buttonStyle, padding: "6px 10px", fontSize: "12px" }, onClick: resetForm, children: "\uCDE8\uC18C" }) : null
+      ] }),
+      /* @__PURE__ */ jsx("p", { style: mutedStyle, children: "\uC124\uC815\uC740 \uBCC4\uB3C4 \uC124\uC815 \uD398\uC774\uC9C0\uC5D0\uC11C \uAD00\uB9AC\uD569\uB2C8\uB2E4. \uAE30\uC874 \uB9C1\uD06C\uB294 \uBD88\uB7EC\uC640\uC11C \uBC29\uD5A5\uC744 \uC218\uC815\uD560 \uC218 \uC788\uC2B5\uB2C8\uB2E4." }),
       /* @__PURE__ */ jsxs("form", { onSubmit: (event) => void onCreateLink(event), style: { display: "grid", gap: "10px" }, children: [
         /* @__PURE__ */ jsxs("label", { style: { display: "grid", gap: "6px" }, children: [
           /* @__PURE__ */ jsx("span", { style: mutedStyle, children: "Remote company" }),
@@ -397,7 +449,7 @@ function ServiceRequestBridgeDetailTab(props) {
             }
           )
         ] }),
-        /* @__PURE__ */ jsx("div", { children: /* @__PURE__ */ jsx("button", { type: "submit", style: buttonStyle, children: "Bridge \uC800\uC7A5" }) })
+        /* @__PURE__ */ jsx("div", { children: /* @__PURE__ */ jsx("button", { type: "submit", style: buttonStyle, children: editingBridgeId ? "Bridge \uC218\uC815 \uC800\uC7A5" : "Bridge \uC800\uC7A5" }) })
       ] })
     ] })
   ] });
@@ -443,8 +495,94 @@ function BridgeDashboardWidget({ context }) {
     ] })
   ] });
 }
+function BridgeSettingsTab() {
+  const host = useHostContext();
+  const snapshot = usePluginData(DATA_KEYS.settingsGet, {});
+  const [providerCompanyName, setProviderCompanyName] = useState("");
+  const [providerProjectName, setProviderProjectName] = useState("");
+  const [requesterLabelNamesText, setRequesterLabelNamesText] = useState("");
+  const [requesterTitlePrefixesText, setRequesterTitlePrefixesText] = useState("");
+  const [autoCreateMirrorIssue, setAutoCreateMirrorIssue] = useState(true);
+  const [workflowTriggerLabel, setWorkflowTriggerLabel] = useState("");
+  const [loaded, setLoaded] = useState(false);
+  const [statusMsg, setStatusMsg] = useState("");
+  function parseAliases(value) {
+    return [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))];
+  }
+  if (snapshot.data && !loaded) {
+    setProviderCompanyName(snapshot.data.providerCompanyName || "");
+    setProviderProjectName(snapshot.data.providerProjectName || "");
+    setRequesterLabelNamesText(
+      (snapshot.data.requesterLabelNames && snapshot.data.requesterLabelNames.length > 0 ? snapshot.data.requesterLabelNames : snapshot.data.requesterLabelName ? [snapshot.data.requesterLabelName] : []).join(", ")
+    );
+    setRequesterTitlePrefixesText(
+      (snapshot.data.requesterTitlePrefixes && snapshot.data.requesterTitlePrefixes.length > 0 ? snapshot.data.requesterTitlePrefixes : snapshot.data.requesterLabelName ? [snapshot.data.requesterLabelName] : []).join(", ")
+    );
+    setAutoCreateMirrorIssue(snapshot.data.autoCreateMirrorIssue ?? true);
+    setWorkflowTriggerLabel(snapshot.data.workflowTriggerLabel || "");
+    setLoaded(true);
+  }
+  async function onSave(e) {
+    e.preventDefault();
+    setStatusMsg("");
+    try {
+      const pluginId = host.pluginId ?? "";
+      const res = await fetch(`/api/plugins/${pluginId}/config`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          configJson: {
+            providerCompanyName,
+            providerProjectName,
+            requesterLabelNames: parseAliases(requesterLabelNamesText),
+            requesterTitlePrefixes: parseAliases(requesterTitlePrefixesText),
+            autoCreateMirrorIssue,
+            workflowTriggerLabel
+          }
+        })
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setStatusMsg("\uC124\uC815\uC774 \uC800\uC7A5\uB418\uC5C8\uC2B5\uB2C8\uB2E4.");
+    } catch (err) {
+      setStatusMsg(`\uC624\uB958: ${err instanceof Error ? err.message : String(err)}`);
+    }
+  }
+  return /* @__PURE__ */ jsx("div", { style: tabStyle, children: /* @__PURE__ */ jsxs("section", { style: cardStyle, children: [
+    /* @__PURE__ */ jsx("strong", { style: { fontSize: "14px" }, children: "Service Bridge \uC124\uC815" }),
+    snapshot.loading ? /* @__PURE__ */ jsx("p", { style: mutedStyle, children: "\uB85C\uB529 \uC911..." }) : null,
+    /* @__PURE__ */ jsx(DataError, { error: snapshot.error }),
+    /* @__PURE__ */ jsxs("form", { onSubmit: (e) => void onSave(e), style: { display: "grid", gap: "12px" }, children: [
+      /* @__PURE__ */ jsxs("label", { style: { display: "grid", gap: "4px" }, children: [
+        /* @__PURE__ */ jsx("span", { style: mutedStyle, children: "Provider Company (\uC11C\uBE44\uC2A4 \uC81C\uACF5 \uD68C\uC0AC)" }),
+        /* @__PURE__ */ jsx("input", { style: inputStyle, value: providerCompanyName, onChange: (e) => setProviderCompanyName(e.target.value), placeholder: "\uC608: \uBCF4\uC218\uD300" })
+      ] }),
+      /* @__PURE__ */ jsxs("label", { style: { display: "grid", gap: "4px" }, children: [
+        /* @__PURE__ */ jsx("span", { style: mutedStyle, children: "Provider Project (\uC774\uC288\uB97C \uC0DD\uC131\uD560 \uD504\uB85C\uC81D\uD2B8)" }),
+        /* @__PURE__ */ jsx("input", { style: inputStyle, value: providerProjectName, onChange: (e) => setProviderProjectName(e.target.value), placeholder: "\uC608: \uAC00\uC988\uC544" })
+      ] }),
+      /* @__PURE__ */ jsxs("label", { style: { display: "grid", gap: "4px" }, children: [
+        /* @__PURE__ */ jsx("span", { style: mutedStyle, children: "Requester Issue Label Aliases (\uC694\uCCAD \uC774\uC288 \uB77C\uBCA8 \uBCC4\uCE6D)" }),
+        /* @__PURE__ */ jsx("input", { style: inputStyle, value: requesterLabelNamesText, onChange: (e) => setRequesterLabelNamesText(e.target.value), placeholder: "\uC608: \uC720\uC9C0\uBCF4\uC218, maintenance" })
+      ] }),
+      /* @__PURE__ */ jsxs("label", { style: { display: "grid", gap: "4px" }, children: [
+        /* @__PURE__ */ jsx("span", { style: mutedStyle, children: "Requester Title Prefixes (\uC694\uCCAD \uC774\uC288 \uC81C\uBAA9 prefix)" }),
+        /* @__PURE__ */ jsx("input", { style: inputStyle, value: requesterTitlePrefixesText, onChange: (e) => setRequesterTitlePrefixesText(e.target.value), placeholder: "\uC608: \uC720\uC9C0\uBCF4\uC218, maintenance" })
+      ] }),
+      /* @__PURE__ */ jsxs("label", { style: { display: "grid", gap: "4px" }, children: [
+        /* @__PURE__ */ jsx("span", { style: mutedStyle, children: "Workflow Trigger Label (\uBBF8\uB7EC \uC774\uC288\uC5D0 \uBD99\uC77C \uB77C\uBCA8)" }),
+        /* @__PURE__ */ jsx("input", { style: inputStyle, value: workflowTriggerLabel, onChange: (e) => setWorkflowTriggerLabel(e.target.value), placeholder: "(\uC120\uD0DD)" })
+      ] }),
+      /* @__PURE__ */ jsxs("label", { style: { display: "flex", alignItems: "center", gap: "8px" }, children: [
+        /* @__PURE__ */ jsx("input", { type: "checkbox", checked: autoCreateMirrorIssue, onChange: (e) => setAutoCreateMirrorIssue(e.target.checked) }),
+        /* @__PURE__ */ jsx("span", { style: mutedStyle, children: "Auto Create Mirror Issue" })
+      ] }),
+      statusMsg ? /* @__PURE__ */ jsx("p", { style: { ...mutedStyle, color: statusMsg.startsWith("\uC624\uB958") ? "#b91c1c" : "#166534" }, children: statusMsg }) : null,
+      /* @__PURE__ */ jsx("div", { children: /* @__PURE__ */ jsx("button", { type: "submit", style: buttonStyle, children: "\uC800\uC7A5" }) })
+    ] })
+  ] }) });
+}
 function BridgeSidebarLink({ context }) {
-  const href = context.companyPrefix ? `/${context.companyPrefix}/service-request-bridge` : "/service-request-bridge";
+  const href = bridgeHref(context.companyPrefix);
   const isActive = typeof window !== "undefined" && window.location.pathname === href;
   return /* @__PURE__ */ jsx(
     "a",
@@ -468,6 +606,7 @@ function BridgeSidebarLink({ context }) {
 }
 export {
   BridgeDashboardWidget,
+  BridgeSettingsTab,
   BridgeSidebarLink,
   ServiceRequestBridgeDetailTab,
   ServiceRequestBridgeListTab
