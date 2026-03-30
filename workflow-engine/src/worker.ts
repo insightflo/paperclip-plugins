@@ -102,6 +102,145 @@ function extractLabelNames(payload: Record<string, unknown>): string[] {
   return names;
 }
 
+function getPaperclipApiUrl(): string {
+  return process.env.PAPERCLIP_API_URL || "http://localhost:3100";
+}
+
+async function cancelActiveIssueRun(
+  ctx: PluginContext,
+  issueId: string,
+  companyId: string,
+): Promise<{ activeRunId?: string; cancelledRunId?: string; error?: string }> {
+  const apiUrl = getPaperclipApiUrl();
+
+  try {
+    const activeRunRes = await fetch(`${apiUrl}/api/issues/${issueId}/active-run`);
+    if (!activeRunRes.ok) {
+      return { error: `active-run lookup failed (${activeRunRes.status})` };
+    }
+
+    const activeRun = await activeRunRes.json() as { id?: string; status?: string } | null;
+    const activeRunId = typeof activeRun?.id === "string" ? activeRun.id : "";
+    if (!activeRunId || activeRun?.status !== "running") {
+      return {};
+    }
+
+    const cancelRes = await fetch(`${apiUrl}/api/heartbeat-runs/${activeRunId}/cancel`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    });
+    if (!cancelRes.ok) {
+      return { activeRunId, error: `cancel failed (${cancelRes.status})` };
+    }
+
+    const cancelled = await cancelRes.json() as { id?: string } | null;
+    const cancelledRunId = typeof cancelled?.id === "string" ? cancelled.id : activeRunId;
+    ctx.logger.info("Cancelled active heartbeat run for workflow step issue", {
+      activeRunId,
+      cancelledRunId,
+      companyId,
+      issueId,
+    });
+    return { activeRunId, cancelledRunId };
+  } catch (error) {
+    return { error: summarizeError(error) };
+  }
+}
+
+async function abortWorkflowRunState(
+  ctx: PluginContext,
+  workflowRunId: string,
+  companyId: string,
+): Promise<void> {
+  const stepRuns = (await listStepRuns(ctx, workflowRunId, companyId)).map(toWorkflowStepRunRecord);
+  const completedAt = new Date().toISOString();
+  let cancelledIssues = 0;
+  let cancelledHeartbeats = 0;
+
+  for (const stepRun of stepRuns) {
+    if (TERMINAL_STEP_STATUSES.has(stepRun.data.status)) {
+      continue;
+    }
+
+    const issueId = typeof stepRun.data.issueId === "string" ? stepRun.data.issueId.trim() : "";
+    if (issueId) {
+      const cancelResult = await cancelActiveIssueRun(ctx, issueId, companyId);
+      if (cancelResult.cancelledRunId) {
+        cancelledHeartbeats += 1;
+      } else if (cancelResult.error) {
+        ctx.logger.warn("Failed to cancel active heartbeat run for workflow step issue", {
+          companyId,
+          error: cancelResult.error,
+          issueId,
+          runId: workflowRunId,
+          stepId: stepRun.data.stepId,
+        });
+      }
+
+      try {
+        const issueSyncResult = await syncWorkflowStepIssueStatusFromStepRun(
+          ctx,
+          stepRun,
+          companyId,
+          "cancelled",
+          {
+            comment: [
+              "### Workflow run aborted by workflow engine",
+              "",
+              "This workflow run was aborted from the Workflow Engine UI.",
+              "The step issue was marked cancelled so the workflow does not stay open.",
+            ].join("\n"),
+          },
+        );
+        if (issueSyncResult.completed) {
+          cancelledIssues += 1;
+        }
+      } catch (error) {
+        ctx.logger.warn("Failed to mark workflow step issue cancelled during abort", {
+          companyId,
+          error: summarizeError(error),
+          issueId,
+          runId: workflowRunId,
+          stepId: stepRun.data.stepId,
+        });
+      }
+    }
+
+    try {
+      if (stepRun.data.sessionId?.trim()) {
+        await ctx.agents.sessions.close(stepRun.data.sessionId.trim(), companyId);
+      }
+    } catch (error) {
+      ctx.logger.warn("Failed to close workflow step session during abort", {
+        companyId,
+        error: summarizeError(error),
+        runId: workflowRunId,
+        sessionId: stepRun.data.sessionId,
+        stepId: stepRun.data.stepId,
+      });
+    }
+
+    await updateStepRun(ctx, stepRun.id, {
+      completedAt,
+      status: STEP_STATUSES.skipped,
+    });
+  }
+
+  await updateWorkflowRun(ctx, workflowRunId, {
+    completedAt,
+    status: RUN_STATUSES.aborted,
+  });
+
+  ctx.logger.info("Workflow run aborted from Workflow Engine UI", {
+    cancelledHeartbeats,
+    cancelledIssues,
+    companyId,
+    runId: workflowRunId,
+    stepCount: stepRuns.length,
+  });
+}
+
 async function matchWorkflowTrigger(
   ctx: PluginContext,
   companyId: string,
@@ -408,7 +547,7 @@ async function invokeAgentForStep(
   // Use wakeup API directly with issueId, because ctx.agents.invoke
   // does not pass issueId to the wakeup context, causing the agent
   // to not check out the specific issue.
-  const apiUrl = process.env.PAPERCLIP_API_URL || "http://localhost:3100";
+  const apiUrl = getPaperclipApiUrl();
   const wakeupRes = await fetch(`${apiUrl}/api/agents/${agent.id}/wakeup`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -1683,6 +1822,7 @@ const plugin = definePlugin({
     ctx.actions.register("abort-run", async (rawParams: unknown) => {
       const params = (rawParams && typeof rawParams === "object" ? rawParams : {}) as Record<string, unknown>;
       const runId = typeof params.runId === "string" ? params.runId.trim() : "";
+      const companyId = typeof params.companyId === "string" ? params.companyId.trim() : "";
       if (!runId) throw new Error("abort-run requires runId");
       const run = await getWorkflowRun(ctx, runId);
       if (!run) throw new Error(`Run not found: ${runId}`);
@@ -1690,10 +1830,8 @@ const plugin = definePlugin({
       if (typedRun.data.status !== RUN_STATUSES.running) {
         return { id: runId, status: typedRun.data.status, message: "already terminal" };
       }
-      await updateWorkflowRun(ctx, runId, {
-        completedAt: new Date().toISOString(),
-        status: RUN_STATUSES.aborted,
-      });
+      const resolvedCompanyId = companyId || typedRun.data.companyId;
+      await abortWorkflowRunState(ctx, runId, resolvedCompanyId);
       return { id: runId, status: "aborted" };
     });
 
