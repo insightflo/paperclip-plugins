@@ -64,6 +64,12 @@ async function findIssueByIdOrIdentifier(ctx, companyId, issueKey) {
 async function listCompanies(ctx) {
     return await ctx.companies.list({ limit: 500, offset: 0 });
 }
+async function listProjects(ctx, companyId) {
+    if (!companyId) {
+        return [];
+    }
+    return await ctx.projects.list({ companyId });
+}
 function normalizeName(value) {
     return value.trim().toLowerCase();
 }
@@ -136,9 +142,33 @@ async function getBridgeConfig(ctx) {
     if (requesterTitlePrefixes.length === 0) {
         requesterTitlePrefixes.push(DEFAULT_REQUESTER_LABEL);
     }
+    const companies = await listCompanies(ctx);
+    const configuredCompanyId = asString(raw.providerCompanyId);
+    const configuredCompanyName = asString(raw.providerCompanyName);
+    let providerCompany = null;
+    if (configuredCompanyId) {
+        providerCompany = companies.find((company) => company.id === configuredCompanyId) ?? null;
+    }
+    if (!providerCompany && configuredCompanyName) {
+        providerCompany = companies.find((company) => company.name === configuredCompanyName)
+            ?? companies.find((company) => normalizeName(company.name) === normalizeName(configuredCompanyName))
+            ?? null;
+    }
+    const configuredProjectId = asString(raw.providerProjectId);
+    const configuredProjectName = asString(raw.providerProjectName);
+    const providerProjects = providerCompany ? await listProjects(ctx, providerCompany.id) : [];
+    let providerProject = null;
+    if (configuredProjectId) {
+        providerProject = providerProjects.find((project) => project.id === configuredProjectId) ?? null;
+    }
+    if (!providerProject && configuredProjectName) {
+        providerProject = providerProjects.find((project) => project.name === configuredProjectName) ?? null;
+    }
     return {
-        providerCompanyName: asString(raw.providerCompanyName),
-        providerProjectName: asString(raw.providerProjectName),
+        providerCompanyId: providerCompany?.id ?? configuredCompanyId,
+        providerCompanyName: providerCompany?.name ?? configuredCompanyName,
+        providerProjectId: providerProject?.id ?? configuredProjectId,
+        providerProjectName: providerProject?.name ?? configuredProjectName,
         requesterLabelNames,
         requesterTitlePrefixes,
         autoCreateMirrorIssue: asBoolean(raw.autoCreateMirrorIssue, true),
@@ -157,6 +187,21 @@ async function findCompanyByName(ctx, name) {
     }
     const normalizedName = normalizeName(providerName);
     return companies.find((company) => normalizeName(company.name) === normalizedName) ?? null;
+}
+async function resolveProviderCompany(ctx, config) {
+    const companies = await listCompanies(ctx);
+    if (config.providerCompanyId) {
+        const byId = companies.find((company) => company.id === config.providerCompanyId);
+        if (byId)
+            return byId;
+    }
+    if (!config.providerCompanyName) {
+        return null;
+    }
+    const exact = companies.find((company) => company.name === config.providerCompanyName);
+    if (exact)
+        return exact;
+    return companies.find((company) => normalizeName(company.name) === normalizeName(config.providerCompanyName)) ?? null;
 }
 function companyNameMap(companies) {
     return new Map(companies.map((company) => [company.id, company.name]));
@@ -553,7 +598,7 @@ async function handleIssueCreated(ctx, event) {
         }
         return;
     }
-    const providerCompany = await findCompanyByName(ctx, config.providerCompanyName);
+    const providerCompany = await resolveProviderCompany(ctx, config);
     if (!providerCompany) {
         ctx.logger.warn("Provider company name is not configured or not found", {
             companyId: refs.companyId,
@@ -599,9 +644,11 @@ async function handleIssueCreated(ctx, event) {
         mirrorCreateParams.labels = [workflowLabel];
     }
     // Resolve provider project by name and attach projectId to mirror issue
-    if (config.providerProjectName) {
+    if (config.providerProjectId || config.providerProjectName) {
         const providerProjects = await ctx.projects.list({ companyId: providerCompany.id });
-        const targetProject = providerProjects.find((p) => p.name === config.providerProjectName);
+        const targetProject = config.providerProjectId
+            ? providerProjects.find((project) => project.id === config.providerProjectId)
+            : providerProjects.find((project) => project.name === config.providerProjectName);
         if (targetProject) {
             mirrorCreateParams.projectId = targetProject.id;
         }
@@ -677,7 +724,18 @@ function registerDataHandlers(ctx) {
     });
     registerDataHandler(ctx, DATA_KEYS.settingsGet, async () => {
         const config = await getBridgeConfig(ctx);
-        return config;
+        const companies = await listCompanies(ctx);
+        const companyOptions = await Promise.all(companies.map(async (company) => ({
+            id: company.id,
+            name: company.name,
+            projects: (await listProjects(ctx, company.id)).map((project) => ({ id: project.id, name: project.name })),
+        })));
+        const activeCompany = companyOptions.find((company) => company.id === config.providerCompanyId);
+        return {
+            ...config,
+            companies: companyOptions,
+            providerProjects: activeCompany?.projects ?? [],
+        };
     });
 }
 function registerActionHandlers(ctx) {

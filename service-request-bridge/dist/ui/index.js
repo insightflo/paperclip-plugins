@@ -10,6 +10,7 @@ import {
 } from "react";
 
 // src/constants.ts
+var PLUGIN_ID = "insightflo.service-request-bridge";
 var BRIDGE_DIRECTIONS = {
   twoWay: "two-way",
   localToRemote: "local-to-remote",
@@ -496,9 +497,10 @@ function BridgeDashboardWidget({ context }) {
   ] });
 }
 function BridgeSettingsTab() {
-  const host = useHostContext();
   const snapshot = usePluginData(DATA_KEYS.settingsGet, {});
+  const [providerCompanyId, setProviderCompanyId] = useState("");
   const [providerCompanyName, setProviderCompanyName] = useState("");
+  const [providerProjectId, setProviderProjectId] = useState("");
   const [providerProjectName, setProviderProjectName] = useState("");
   const [requesterLabelNamesText, setRequesterLabelNamesText] = useState("");
   const [requesterTitlePrefixesText, setRequesterTitlePrefixesText] = useState("");
@@ -506,11 +508,15 @@ function BridgeSettingsTab() {
   const [workflowTriggerLabel, setWorkflowTriggerLabel] = useState("");
   const [loaded, setLoaded] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
+  const companies = snapshot.data?.companies ?? [];
+  const availableProjects = companies.find((company) => company.id === providerCompanyId)?.projects ?? snapshot.data?.providerProjects ?? [];
   function parseAliases(value) {
     return [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))];
   }
   if (snapshot.data && !loaded) {
+    setProviderCompanyId(snapshot.data.providerCompanyId || "");
     setProviderCompanyName(snapshot.data.providerCompanyName || "");
+    setProviderProjectId(snapshot.data.providerProjectId || "");
     setProviderProjectName(snapshot.data.providerProjectName || "");
     setRequesterLabelNamesText(
       (snapshot.data.requesterLabelNames && snapshot.data.requesterLabelNames.length > 0 ? snapshot.data.requesterLabelNames : snapshot.data.requesterLabelName ? [snapshot.data.requesterLabelName] : []).join(", ")
@@ -526,14 +532,17 @@ function BridgeSettingsTab() {
     e.preventDefault();
     setStatusMsg("");
     try {
-      const pluginId = host.pluginId ?? "";
-      const res = await fetch(`/api/plugins/${pluginId}/config`, {
+      const selectedCompany = companies.find((company) => company.id === providerCompanyId);
+      const selectedProject = availableProjects.find((project) => project.id === providerProjectId);
+      const res = await fetch(`/api/plugins/${PLUGIN_ID}/config`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           configJson: {
-            providerCompanyName,
-            providerProjectName,
+            providerCompanyId,
+            providerCompanyName: selectedCompany?.name ?? providerCompanyName,
+            providerProjectId,
+            providerProjectName: selectedProject?.name ?? providerProjectName,
             requesterLabelNames: parseAliases(requesterLabelNamesText),
             requesterTitlePrefixes: parseAliases(requesterTitlePrefixesText),
             autoCreateMirrorIssue,
@@ -554,11 +563,46 @@ function BridgeSettingsTab() {
     /* @__PURE__ */ jsxs("form", { onSubmit: (e) => void onSave(e), style: { display: "grid", gap: "12px" }, children: [
       /* @__PURE__ */ jsxs("label", { style: { display: "grid", gap: "4px" }, children: [
         /* @__PURE__ */ jsx("span", { style: mutedStyle, children: "Provider Company (\uC11C\uBE44\uC2A4 \uC81C\uACF5 \uD68C\uC0AC)" }),
-        /* @__PURE__ */ jsx("input", { style: inputStyle, value: providerCompanyName, onChange: (e) => setProviderCompanyName(e.target.value), placeholder: "\uC608: \uBCF4\uC218\uD300" })
+        /* @__PURE__ */ jsxs(
+          "select",
+          {
+            style: inputStyle,
+            value: providerCompanyId,
+            onChange: (e) => {
+              const nextId = e.target.value;
+              const nextCompany = companies.find((company) => company.id === nextId);
+              setProviderCompanyId(nextId);
+              setProviderCompanyName(nextCompany?.name ?? "");
+              setProviderProjectId("");
+              setProviderProjectName("");
+            },
+            children: [
+              /* @__PURE__ */ jsx("option", { value: "", children: "(\uC120\uD0DD)" }),
+              companies.map((company) => /* @__PURE__ */ jsx("option", { value: company.id, children: company.name }, company.id))
+            ]
+          }
+        )
       ] }),
       /* @__PURE__ */ jsxs("label", { style: { display: "grid", gap: "4px" }, children: [
         /* @__PURE__ */ jsx("span", { style: mutedStyle, children: "Provider Project (\uC774\uC288\uB97C \uC0DD\uC131\uD560 \uD504\uB85C\uC81D\uD2B8)" }),
-        /* @__PURE__ */ jsx("input", { style: inputStyle, value: providerProjectName, onChange: (e) => setProviderProjectName(e.target.value), placeholder: "\uC608: \uAC00\uC988\uC544" })
+        /* @__PURE__ */ jsxs(
+          "select",
+          {
+            style: inputStyle,
+            value: providerProjectId,
+            onChange: (e) => {
+              const nextId = e.target.value;
+              const nextProject = availableProjects.find((project) => project.id === nextId);
+              setProviderProjectId(nextId);
+              setProviderProjectName(nextProject?.name ?? "");
+            },
+            disabled: !providerCompanyId,
+            children: [
+              /* @__PURE__ */ jsx("option", { value: "", children: "(\uC120\uD0DD)" }),
+              availableProjects.map((project) => /* @__PURE__ */ jsx("option", { value: project.id, children: project.name }, project.id))
+            ]
+          }
+        )
       ] }),
       /* @__PURE__ */ jsxs("label", { style: { display: "grid", gap: "4px" }, children: [
         /* @__PURE__ */ jsx("span", { style: mutedStyle, children: "Requester Issue Label Aliases (\uC694\uCCAD \uC774\uC288 \uB77C\uBCA8 \uBCC4\uCE6D)" }),

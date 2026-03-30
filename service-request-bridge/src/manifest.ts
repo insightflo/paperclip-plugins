@@ -13,6 +13,7 @@ const capabilities = [
   "issues.update",
   "issue.comments.create",
   "companies.read",
+  "projects.read",
   "plugin.state.read",
   "plugin.state.write",
   "ui.dashboardWidget.register",
@@ -74,10 +75,15 @@ const manifest: PaperclipPluginManifestV1 = {
   instanceConfigSchema: {
     type: "object",
     properties: {
+      providerCompanyId: {
+        type: "string",
+        title: "Provider company id",
+        description: "Selected provider company id",
+      },
       providerCompanyName: {
         type: "string",
         title: "Provider company name",
-        description: "Company that handles maintenance requests",
+        description: "Legacy fallback company name for older configs",
       },
       requesterLabelNames: {
         type: "array",
@@ -103,10 +109,15 @@ const manifest: PaperclipPluginManifestV1 = {
         title: "Workflow trigger label for mirror issues",
         description: "Label to add to mirror issues to auto-start a workflow (e.g. wf:maintenance-triage)",
       },
+      providerProjectId: {
+        type: "string",
+        title: "Provider project id",
+        description: "Selected provider project id",
+      },
       providerProjectName: {
         type: "string",
         title: "Provider project name",
-        description: "Project in provider company to assign mirror issues to",
+        description: "Legacy fallback project name for older configs",
       },
     },
   },

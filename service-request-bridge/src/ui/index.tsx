@@ -15,6 +15,7 @@ import {
   ACTION_KEYS,
   BRIDGE_DIRECTIONS,
   DATA_KEYS,
+  PLUGIN_ID,
 } from "../constants.js";
 
 type GenericIssueTabProps = {
@@ -643,18 +644,23 @@ export function BridgeDashboardWidget({ context }: PluginWidgetProps): JSX.Eleme
 }
 
 export function BridgeSettingsTab(): JSX.Element {
-  const host = useHostContext();
   const snapshot = usePluginData<{
+    providerCompanyId: string;
     providerCompanyName: string;
+    providerProjectId: string;
     providerProjectName: string;
     requesterLabelNames: string[];
     requesterTitlePrefixes: string[];
     requesterLabelName?: string;
     autoCreateMirrorIssue: boolean;
     workflowTriggerLabel: string;
+    companies: Array<{ id: string; name: string; projects: Array<{ id: string; name: string }> }>;
+    providerProjects: Array<{ id: string; name: string }>;
   }>(DATA_KEYS.settingsGet, {});
 
+  const [providerCompanyId, setProviderCompanyId] = useState("");
   const [providerCompanyName, setProviderCompanyName] = useState("");
+  const [providerProjectId, setProviderProjectId] = useState("");
   const [providerProjectName, setProviderProjectName] = useState("");
   const [requesterLabelNamesText, setRequesterLabelNamesText] = useState("");
   const [requesterTitlePrefixesText, setRequesterTitlePrefixesText] = useState("");
@@ -663,12 +669,19 @@ export function BridgeSettingsTab(): JSX.Element {
   const [loaded, setLoaded] = useState(false);
   const [statusMsg, setStatusMsg] = useState("");
 
+  const companies = snapshot.data?.companies ?? [];
+  const availableProjects = companies.find((company) => company.id === providerCompanyId)?.projects
+    ?? snapshot.data?.providerProjects
+    ?? [];
+
   function parseAliases(value: string): string[] {
     return [...new Set(value.split(",").map((item) => item.trim()).filter(Boolean))];
   }
 
   if (snapshot.data && !loaded) {
+    setProviderCompanyId(snapshot.data.providerCompanyId || "");
     setProviderCompanyName(snapshot.data.providerCompanyName || "");
+    setProviderProjectId(snapshot.data.providerProjectId || "");
     setProviderProjectName(snapshot.data.providerProjectName || "");
     setRequesterLabelNamesText(
       (snapshot.data.requesterLabelNames && snapshot.data.requesterLabelNames.length > 0
@@ -695,14 +708,17 @@ export function BridgeSettingsTab(): JSX.Element {
     e.preventDefault();
     setStatusMsg("");
     try {
-      const pluginId = (host as unknown as Record<string, unknown>).pluginId ?? "";
-      const res = await fetch(`/api/plugins/${pluginId}/config`, {
+      const selectedCompany = companies.find((company) => company.id === providerCompanyId);
+      const selectedProject = availableProjects.find((project) => project.id === providerProjectId);
+      const res = await fetch(`/api/plugins/${PLUGIN_ID}/config`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           configJson: {
-            providerCompanyName,
-            providerProjectName,
+            providerCompanyId,
+            providerCompanyName: selectedCompany?.name ?? providerCompanyName,
+            providerProjectId,
+            providerProjectName: selectedProject?.name ?? providerProjectName,
             requesterLabelNames: parseAliases(requesterLabelNamesText),
             requesterTitlePrefixes: parseAliases(requesterTitlePrefixesText),
             autoCreateMirrorIssue,
@@ -726,11 +742,42 @@ export function BridgeSettingsTab(): JSX.Element {
         <form onSubmit={(e) => void onSave(e)} style={{ display: "grid", gap: "12px" }}>
           <label style={{ display: "grid", gap: "4px" }}>
             <span style={mutedStyle}>Provider Company (서비스 제공 회사)</span>
-            <input style={inputStyle} value={providerCompanyName} onChange={(e) => setProviderCompanyName(e.target.value)} placeholder="예: 보수팀" />
+            <select
+              style={inputStyle}
+              value={providerCompanyId}
+              onChange={(e) => {
+                const nextId = e.target.value;
+                const nextCompany = companies.find((company) => company.id === nextId);
+                setProviderCompanyId(nextId);
+                setProviderCompanyName(nextCompany?.name ?? "");
+                setProviderProjectId("");
+                setProviderProjectName("");
+              }}
+            >
+              <option value="">(선택)</option>
+              {companies.map((company) => (
+                <option key={company.id} value={company.id}>{company.name}</option>
+              ))}
+            </select>
           </label>
           <label style={{ display: "grid", gap: "4px" }}>
             <span style={mutedStyle}>Provider Project (이슈를 생성할 프로젝트)</span>
-            <input style={inputStyle} value={providerProjectName} onChange={(e) => setProviderProjectName(e.target.value)} placeholder="예: 가즈아" />
+            <select
+              style={inputStyle}
+              value={providerProjectId}
+              onChange={(e) => {
+                const nextId = e.target.value;
+                const nextProject = availableProjects.find((project) => project.id === nextId);
+                setProviderProjectId(nextId);
+                setProviderProjectName(nextProject?.name ?? "");
+              }}
+              disabled={!providerCompanyId}
+            >
+              <option value="">(선택)</option>
+              {availableProjects.map((project) => (
+                <option key={project.id} value={project.id}>{project.name}</option>
+              ))}
+            </select>
           </label>
           <label style={{ display: "grid", gap: "4px" }}>
             <span style={mutedStyle}>Requester Issue Label Aliases (요청 이슈 라벨 별칭)</span>
