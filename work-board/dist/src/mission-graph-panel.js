@@ -8,6 +8,14 @@ const DEFAULT_GRAPH_FILTERS = {
     standalone: true,
     agent: true,
 };
+const DEFAULT_RELATION_FILTERS = {
+    parent: true,
+    child: true,
+    related: true,
+    reissue: true,
+    spawned_followup: true,
+    assignee: true,
+};
 const panelStyle = {
     borderRadius: "18px",
     border: "1px solid color-mix(in srgb, var(--border, #d4d4d8) 74%, transparent)",
@@ -44,6 +52,50 @@ function buildFilterSummary(nodes) {
         summary[nodeFilterKind(node)] += 1;
     }
     return summary;
+}
+function relationFilterKind(edge) {
+    switch (edge.label) {
+        case "parent":
+        case "child":
+        case "related":
+        case "reissue":
+        case "spawned_followup":
+        case "assignee":
+            return edge.label;
+        default:
+            return null;
+    }
+}
+function isEdgeVisibleByFilter(edge, filters) {
+    const key = relationFilterKind(edge);
+    if (!key)
+        return true;
+    return filters[key];
+}
+function buildRelationSummary(edges) {
+    const summary = {
+        parent: 0,
+        child: 0,
+        related: 0,
+        reissue: 0,
+        spawned_followup: 0,
+        assignee: 0,
+    };
+    for (const edge of edges) {
+        const key = relationFilterKind(edge);
+        if (!key)
+            continue;
+        summary[key] += 1;
+    }
+    return summary;
+}
+function relationLabel(key) {
+    switch (key) {
+        case "spawned_followup":
+            return "spawned";
+        default:
+            return key;
+    }
 }
 function buildElements(nodes, edges) {
     const nodeElements = nodes.map((node) => ({
@@ -232,6 +284,7 @@ export function MissionGraphPanel({ graph, companyPrefix, }) {
     const [collapsed, setCollapsed] = useState(false);
     const [visibleMode, setVisibleMode] = useState(false);
     const [filters, setFilters] = useState(DEFAULT_GRAPH_FILTERS);
+    const [relationFilters, setRelationFilters] = useState(DEFAULT_RELATION_FILTERS);
     const [filterNotice, setFilterNotice] = useState(null);
     const [trailNodeIds, setTrailNodeIds] = useState([]);
     const graphRef = useRef(null);
@@ -267,10 +320,14 @@ export function MissionGraphPanel({ graph, companyPrefix, }) {
         return graph.missionGraph;
     }, [graph.missionGraph, graph.spawnGraph, graphMode]);
     const filterSummary = useMemo(() => buildFilterSummary(activeGraph.graph.nodes), [activeGraph.graph.nodes]);
+    const relationSummary = useMemo(() => buildRelationSummary(activeGraph.graph.edges), [activeGraph.graph.edges]);
     const activeFilterCount = useMemo(() => (Object.values(filters).filter(Boolean).length), [filters]);
+    const activeRelationFilterCount = useMemo(() => (Object.values(relationFilters).filter(Boolean).length), [relationFilters]);
     const visibleNodes = useMemo(() => activeGraph.graph.nodes.filter((node) => isNodeVisibleByFilter(node, filters)), [activeGraph.graph.nodes, filters]);
     const visibleNodeIds = useMemo(() => new Set(visibleNodes.map((node) => node.id)), [visibleNodes]);
-    const visibleEdges = useMemo(() => activeGraph.graph.edges.filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target)), [activeGraph.graph.edges, visibleNodeIds]);
+    const visibleEdges = useMemo(() => activeGraph.graph.edges.filter((edge) => (visibleNodeIds.has(edge.source)
+        && visibleNodeIds.has(edge.target)
+        && isEdgeVisibleByFilter(edge, relationFilters))), [activeGraph.graph.edges, relationFilters, visibleNodeIds]);
     const visibleGraph = useMemo(() => ({
         nodes: visibleNodes,
         edges: visibleEdges,
@@ -489,6 +546,17 @@ export function MissionGraphPanel({ graph, companyPrefix, }) {
             [key]: !current[key],
         }));
     };
+    const updateRelationFilter = (key) => {
+        if (relationFilters[key] && activeRelationFilterCount === 1) {
+            setFilterNotice("최소 하나의 관계 필터는 유지해야 합니다.");
+            return;
+        }
+        setFilterNotice(null);
+        setRelationFilters((current) => ({
+            ...current,
+            [key]: !current[key],
+        }));
+    };
     const searchIssues = () => {
         const query = searchQuery.trim();
         if (!query) {
@@ -519,7 +587,7 @@ export function MissionGraphPanel({ graph, companyPrefix, }) {
             padding: "14px",
             display: "grid",
             gap: "12px",
-        }, children: [_jsxs("div", { style: { display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "center", flexWrap: "wrap" }, children: [_jsxs("div", { style: { display: "grid", gap: "4px" }, children: [_jsx("strong", { style: { fontSize: "18px" }, children: "Mission Graph" }), _jsxs("div", { style: mutedStyle, children: [graphMode === "spawn" ? "spawn" : "mission", " \u00B7 seed ", activeGraph.seedIssueIds.length, " \u00B7 visible ", visibleGraph.nodes.length, " \u00B7 edges ", visibleGraph.edges.length] })] }), _jsxs("div", { style: { display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }, children: [_jsxs("div", { style: { display: "flex", gap: "6px" }, children: [_jsx("button", { type: "button", style: toggleButtonStyle(graphMode === "mission"), onClick: () => setGraphMode("mission"), children: "mission graph" }), _jsx("button", { type: "button", style: toggleButtonStyle(graphMode === "spawn"), onClick: () => setGraphMode("spawn"), children: "spawn graph" })] }), _jsx("div", { style: { ...mutedStyle, padding: "4px 8px", borderRadius: "999px", background: "color-mix(in srgb, var(--muted, #e5e7eb) 52%, transparent)" }, children: graphMode === "spawn" ? "spawn lineage only" : "금주 seed + related only" }), _jsx("button", { type: "button", style: toggleButtonStyle(collapsed), onClick: () => setCollapsed((value) => !value), children: collapsed ? "펼치기" : "접기" })] })] }), _jsxs("div", { style: { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }, children: [["parent", "child", "standalone", "agent"].map((key) => (_jsxs("button", { type: "button", style: toggleButtonStyle(filters[key]), onClick: () => updateFilter(key), children: [key, " ", filterSummary[key]] }, key))), _jsxs("button", { type: "button", style: toggleButtonStyle(visibleMode), onClick: () => setVisibleMode((value) => !value), children: ["visible mode ", visibleMode ? "on" : "off"] }), _jsx("button", { type: "button", style: toggleButtonStyle(trailNodeIds.length > 0), onClick: clearTrail, disabled: trailNodeIds.length === 0, children: "trail clear" })] }), _jsxs("div", { style: { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }, children: [_jsx("input", { type: "search", value: searchQuery, onChange: (event) => {
+        }, children: [_jsxs("div", { style: { display: "flex", justifyContent: "space-between", gap: "10px", alignItems: "center", flexWrap: "wrap" }, children: [_jsxs("div", { style: { display: "grid", gap: "4px" }, children: [_jsx("strong", { style: { fontSize: "18px" }, children: "Mission Graph" }), _jsxs("div", { style: mutedStyle, children: [graphMode === "spawn" ? "spawn" : "mission", " \u00B7 seed ", activeGraph.seedIssueIds.length, " \u00B7 visible ", visibleGraph.nodes.length, " \u00B7 edges ", visibleGraph.edges.length] })] }), _jsxs("div", { style: { display: "flex", gap: "8px", alignItems: "center", flexWrap: "wrap" }, children: [_jsxs("div", { style: { display: "flex", gap: "6px" }, children: [_jsx("button", { type: "button", style: toggleButtonStyle(graphMode === "mission"), onClick: () => setGraphMode("mission"), children: "mission graph" }), _jsx("button", { type: "button", style: toggleButtonStyle(graphMode === "spawn"), onClick: () => setGraphMode("spawn"), children: "spawn graph" })] }), _jsx("div", { style: { ...mutedStyle, padding: "4px 8px", borderRadius: "999px", background: "color-mix(in srgb, var(--muted, #e5e7eb) 52%, transparent)" }, children: graphMode === "spawn" ? "spawn lineage only" : "금주 seed + related only" }), _jsx("button", { type: "button", style: toggleButtonStyle(collapsed), onClick: () => setCollapsed((value) => !value), children: collapsed ? "펼치기" : "접기" })] })] }), _jsx("div", { style: { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }, children: ["parent", "child", "standalone", "agent"].map((key) => (_jsxs("button", { type: "button", style: toggleButtonStyle(filters[key]), onClick: () => updateFilter(key), children: [key, " ", filterSummary[key]] }, key))) }), _jsxs("div", { style: { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }, children: [["parent", "child", "related", "reissue", "spawned_followup", "assignee"].map((key) => (_jsxs("button", { type: "button", style: toggleButtonStyle(relationFilters[key]), onClick: () => updateRelationFilter(key), children: [relationLabel(key), " ", relationSummary[key]] }, key))), _jsxs("button", { type: "button", style: toggleButtonStyle(visibleMode), onClick: () => setVisibleMode((value) => !value), children: ["visible mode ", visibleMode ? "on" : "off"] }), _jsx("button", { type: "button", style: toggleButtonStyle(trailNodeIds.length > 0), onClick: clearTrail, disabled: trailNodeIds.length === 0, children: "trail clear" })] }), _jsxs("div", { style: { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }, children: [_jsx("input", { type: "search", value: searchQuery, onChange: (event) => {
                             setSearchQuery(event.target.value);
                             if (searchNotice)
                                 setSearchNotice(null);
@@ -567,6 +635,6 @@ export function MissionGraphPanel({ graph, companyPrefix, }) {
                             border: "1px solid color-mix(in srgb, var(--border, #d4d4d8) 76%, transparent)",
                             background: "color-mix(in srgb, var(--card, #ffffff) 92%, transparent)",
                             padding: "12px",
-                        }, children: _jsx(NodeDetailPanel, { selectedNode: selectedNode, nodes: visibleGraph.nodes, edges: visibleGraph.edges, companyPrefix: companyPrefix, seedIssueIds: activeGraph.seedIssueIds }) })] })) : (_jsxs("div", { style: { ...mutedStyle, padding: "8px 4px" }, children: ["\uADF8\uB798\uD504\uB294 \uC811\uD78C \uC0C1\uD0DC\uC785\uB2C8\uB2E4. \uB2E4\uC2DC \uD3BC\uCE58\uBA74 ", graphMode === "spawn" ? "spawn 계보" : "연관 미션", "\uACFC \uD558\uC774\uB77C\uC774\uD2B8\uB97C \uBCFC \uC218 \uC788\uC2B5\uB2C8\uB2E4."] })), _jsxs("div", { style: { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }, children: [_jsx("span", { style: { ...mutedStyle, padding: "4px 8px", borderRadius: "999px", background: "color-mix(in srgb, var(--muted, #e5e7eb) 52%, transparent)" }, children: "parent / child / standalone / agent \uD544\uD130" }), _jsx("span", { style: { ...mutedStyle, padding: "4px 8px", borderRadius: "999px", background: "color-mix(in srgb, var(--muted, #e5e7eb) 52%, transparent)" }, children: "visible mode on = \uD074\uB9AD\uD55C \uB178\uB4DC\uC758 \uC5F0\uAD00 \uAD00\uACC4\uB97C \uACE0\uC815" })] })] }));
+                        }, children: _jsx(NodeDetailPanel, { selectedNode: selectedNode, nodes: visibleGraph.nodes, edges: visibleGraph.edges, companyPrefix: companyPrefix, seedIssueIds: activeGraph.seedIssueIds }) })] })) : (_jsxs("div", { style: { ...mutedStyle, padding: "8px 4px" }, children: ["\uADF8\uB798\uD504\uB294 \uC811\uD78C \uC0C1\uD0DC\uC785\uB2C8\uB2E4. \uB2E4\uC2DC \uD3BC\uCE58\uBA74 ", graphMode === "spawn" ? "spawn 계보" : "연관 미션", "\uACFC \uD558\uC774\uB77C\uC774\uD2B8\uB97C \uBCFC \uC218 \uC788\uC2B5\uB2C8\uB2E4."] })), _jsxs("div", { style: { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }, children: [_jsx("span", { style: { ...mutedStyle, padding: "4px 8px", borderRadius: "999px", background: "color-mix(in srgb, var(--muted, #e5e7eb) 52%, transparent)" }, children: "parent / child / standalone / agent \uD544\uD130" }), _jsx("span", { style: { ...mutedStyle, padding: "4px 8px", borderRadius: "999px", background: "color-mix(in srgb, var(--muted, #e5e7eb) 52%, transparent)" }, children: "parent / child / related / reissue / spawned / assignee \uAD00\uACC4 \uD544\uD130" }), _jsx("span", { style: { ...mutedStyle, padding: "4px 8px", borderRadius: "999px", background: "color-mix(in srgb, var(--muted, #e5e7eb) 52%, transparent)" }, children: "visible mode on = \uD074\uB9AD\uD55C \uB178\uB4DC\uC758 \uC5F0\uAD00 \uAD00\uACC4\uB97C \uACE0\uC815" })] })] }));
 }
 //# sourceMappingURL=mission-graph-panel.js.map

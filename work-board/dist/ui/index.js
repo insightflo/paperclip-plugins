@@ -30137,6 +30137,14 @@ var DEFAULT_GRAPH_FILTERS = {
   standalone: true,
   agent: true
 };
+var DEFAULT_RELATION_FILTERS = {
+  parent: true,
+  child: true,
+  related: true,
+  reissue: true,
+  spawned_followup: true,
+  assignee: true
+};
 var panelStyle = {
   borderRadius: "18px",
   border: "1px solid color-mix(in srgb, var(--border, #d4d4d8) 74%, transparent)",
@@ -30172,6 +30180,48 @@ function buildFilterSummary(nodes3) {
     summary[nodeFilterKind(node)] += 1;
   }
   return summary;
+}
+function relationFilterKind(edge) {
+  switch (edge.label) {
+    case "parent":
+    case "child":
+    case "related":
+    case "reissue":
+    case "spawned_followup":
+    case "assignee":
+      return edge.label;
+    default:
+      return null;
+  }
+}
+function isEdgeVisibleByFilter(edge, filters) {
+  const key = relationFilterKind(edge);
+  if (!key) return true;
+  return filters[key];
+}
+function buildRelationSummary(edges3) {
+  const summary = {
+    parent: 0,
+    child: 0,
+    related: 0,
+    reissue: 0,
+    spawned_followup: 0,
+    assignee: 0
+  };
+  for (const edge of edges3) {
+    const key = relationFilterKind(edge);
+    if (!key) continue;
+    summary[key] += 1;
+  }
+  return summary;
+}
+function relationLabel(key) {
+  switch (key) {
+    case "spawned_followup":
+      return "spawned";
+    default:
+      return key;
+  }
 }
 function buildElements(nodes3, edges3) {
   const nodeElements = nodes3.map((node) => ({
@@ -30428,6 +30478,7 @@ function MissionGraphPanel({
   const [collapsed, setCollapsed] = useState(false);
   const [visibleMode, setVisibleMode] = useState(false);
   const [filters, setFilters] = useState(DEFAULT_GRAPH_FILTERS);
+  const [relationFilters, setRelationFilters] = useState(DEFAULT_RELATION_FILTERS);
   const [filterNotice, setFilterNotice] = useState(null);
   const [trailNodeIds, setTrailNodeIds] = useState([]);
   const graphRef = useRef(null);
@@ -30462,9 +30513,14 @@ function MissionGraphPanel({
     return graph.missionGraph;
   }, [graph.missionGraph, graph.spawnGraph, graphMode]);
   const filterSummary = useMemo(() => buildFilterSummary(activeGraph.graph.nodes), [activeGraph.graph.nodes]);
+  const relationSummary = useMemo(() => buildRelationSummary(activeGraph.graph.edges), [activeGraph.graph.edges]);
   const activeFilterCount = useMemo(
     () => Object.values(filters).filter(Boolean).length,
     [filters]
+  );
+  const activeRelationFilterCount = useMemo(
+    () => Object.values(relationFilters).filter(Boolean).length,
+    [relationFilters]
   );
   const visibleNodes = useMemo(
     () => activeGraph.graph.nodes.filter((node) => isNodeVisibleByFilter(node, filters)),
@@ -30472,8 +30528,8 @@ function MissionGraphPanel({
   );
   const visibleNodeIds = useMemo(() => new Set(visibleNodes.map((node) => node.id)), [visibleNodes]);
   const visibleEdges = useMemo(
-    () => activeGraph.graph.edges.filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target)),
-    [activeGraph.graph.edges, visibleNodeIds]
+    () => activeGraph.graph.edges.filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target) && isEdgeVisibleByFilter(edge, relationFilters)),
+    [activeGraph.graph.edges, relationFilters, visibleNodeIds]
   );
   const visibleGraph = useMemo(
     () => ({
@@ -30688,6 +30744,17 @@ function MissionGraphPanel({
       [key]: !current[key]
     }));
   };
+  const updateRelationFilter = (key) => {
+    if (relationFilters[key] && activeRelationFilterCount === 1) {
+      setFilterNotice("\uCD5C\uC18C \uD558\uB098\uC758 \uAD00\uACC4 \uD544\uD130\uB294 \uC720\uC9C0\uD574\uC57C \uD569\uB2C8\uB2E4.");
+      return;
+    }
+    setFilterNotice(null);
+    setRelationFilters((current) => ({
+      ...current,
+      [key]: !current[key]
+    }));
+  };
   const searchIssues = () => {
     const query = searchQuery.trim();
     if (!query) {
@@ -30745,11 +30812,16 @@ function MissionGraphPanel({
             /* @__PURE__ */ jsx("button", { type: "button", style: toggleButtonStyle(collapsed), onClick: () => setCollapsed((value) => !value), children: collapsed ? "\uD3BC\uCE58\uAE30" : "\uC811\uAE30" })
           ] })
         ] }),
+        /* @__PURE__ */ jsx("div", { style: { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }, children: ["parent", "child", "standalone", "agent"].map((key) => /* @__PURE__ */ jsxs("button", { type: "button", style: toggleButtonStyle(filters[key]), onClick: () => updateFilter(key), children: [
+          key,
+          " ",
+          filterSummary[key]
+        ] }, key)) }),
         /* @__PURE__ */ jsxs("div", { style: { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }, children: [
-          ["parent", "child", "standalone", "agent"].map((key) => /* @__PURE__ */ jsxs("button", { type: "button", style: toggleButtonStyle(filters[key]), onClick: () => updateFilter(key), children: [
-            key,
+          ["parent", "child", "related", "reissue", "spawned_followup", "assignee"].map((key) => /* @__PURE__ */ jsxs("button", { type: "button", style: toggleButtonStyle(relationFilters[key]), onClick: () => updateRelationFilter(key), children: [
+            relationLabel(key),
             " ",
-            filterSummary[key]
+            relationSummary[key]
           ] }, key)),
           /* @__PURE__ */ jsxs("button", { type: "button", style: toggleButtonStyle(visibleMode), onClick: () => setVisibleMode((value) => !value), children: [
             "visible mode ",
@@ -30873,6 +30945,7 @@ function MissionGraphPanel({
         ] }),
         /* @__PURE__ */ jsxs("div", { style: { display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }, children: [
           /* @__PURE__ */ jsx("span", { style: { ...mutedStyle, padding: "4px 8px", borderRadius: "999px", background: "color-mix(in srgb, var(--muted, #e5e7eb) 52%, transparent)" }, children: "parent / child / standalone / agent \uD544\uD130" }),
+          /* @__PURE__ */ jsx("span", { style: { ...mutedStyle, padding: "4px 8px", borderRadius: "999px", background: "color-mix(in srgb, var(--muted, #e5e7eb) 52%, transparent)" }, children: "parent / child / related / reissue / spawned / assignee \uAD00\uACC4 \uD544\uD130" }),
           /* @__PURE__ */ jsx("span", { style: { ...mutedStyle, padding: "4px 8px", borderRadius: "999px", background: "color-mix(in srgb, var(--muted, #e5e7eb) 52%, transparent)" }, children: "visible mode on = \uD074\uB9AD\uD55C \uB178\uB4DC\uC758 \uC5F0\uAD00 \uAD00\uACC4\uB97C \uACE0\uC815" })
         ] })
       ]

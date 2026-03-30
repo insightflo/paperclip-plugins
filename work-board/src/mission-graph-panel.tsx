@@ -51,12 +51,23 @@ let cytoscapeLoader: Promise<CytoscapeFactory> | null = null;
 
 type VisibleNodeKind = "parent" | "child" | "standalone" | "agent";
 type GraphFilterState = Record<VisibleNodeKind, boolean>;
+type VisibleRelationKind = "parent" | "child" | "related" | "reissue" | "spawned_followup" | "assignee";
+type GraphRelationFilterState = Record<VisibleRelationKind, boolean>;
 
 const DEFAULT_GRAPH_FILTERS: GraphFilterState = {
   parent: true,
   child: true,
   standalone: true,
   agent: true,
+};
+
+const DEFAULT_RELATION_FILTERS: GraphRelationFilterState = {
+  parent: true,
+  child: true,
+  related: true,
+  reissue: true,
+  spawned_followup: true,
+  assignee: true,
 };
 
 const panelStyle: CSSProperties = {
@@ -101,6 +112,54 @@ function buildFilterSummary(nodes: GraphNode[]): Record<VisibleNodeKind, number>
   }
 
   return summary;
+}
+
+function relationFilterKind(edge: GraphEdge): VisibleRelationKind | null {
+  switch (edge.label) {
+    case "parent":
+    case "child":
+    case "related":
+    case "reissue":
+    case "spawned_followup":
+    case "assignee":
+      return edge.label;
+    default:
+      return null;
+  }
+}
+
+function isEdgeVisibleByFilter(edge: GraphEdge, filters: GraphRelationFilterState): boolean {
+  const key = relationFilterKind(edge);
+  if (!key) return true;
+  return filters[key];
+}
+
+function buildRelationSummary(edges: GraphEdge[]): Record<VisibleRelationKind, number> {
+  const summary: Record<VisibleRelationKind, number> = {
+    parent: 0,
+    child: 0,
+    related: 0,
+    reissue: 0,
+    spawned_followup: 0,
+    assignee: 0,
+  };
+
+  for (const edge of edges) {
+    const key = relationFilterKind(edge);
+    if (!key) continue;
+    summary[key] += 1;
+  }
+
+  return summary;
+}
+
+function relationLabel(key: VisibleRelationKind): string {
+  switch (key) {
+    case "spawned_followup":
+      return "spawned";
+    default:
+      return key;
+  }
 }
 
 function buildElements(nodes: GraphNode[], edges: GraphEdge[]): CytoscapeElementPayload[] {
@@ -409,6 +468,7 @@ export function MissionGraphPanel({
   const [collapsed, setCollapsed] = useState(false);
   const [visibleMode, setVisibleMode] = useState(false);
   const [filters, setFilters] = useState<GraphFilterState>(DEFAULT_GRAPH_FILTERS);
+  const [relationFilters, setRelationFilters] = useState<GraphRelationFilterState>(DEFAULT_RELATION_FILTERS);
   const [filterNotice, setFilterNotice] = useState<string | null>(null);
   const [trailNodeIds, setTrailNodeIds] = useState<string[]>([]);
   const graphRef = useRef<HTMLDivElement | null>(null);
@@ -450,9 +510,14 @@ export function MissionGraphPanel({
   }, [graph.missionGraph, graph.spawnGraph, graphMode]);
 
   const filterSummary = useMemo(() => buildFilterSummary(activeGraph.graph.nodes), [activeGraph.graph.nodes]);
+  const relationSummary = useMemo(() => buildRelationSummary(activeGraph.graph.edges), [activeGraph.graph.edges]);
   const activeFilterCount = useMemo(
     () => (Object.values(filters).filter(Boolean).length),
     [filters],
+  );
+  const activeRelationFilterCount = useMemo(
+    () => (Object.values(relationFilters).filter(Boolean).length),
+    [relationFilters],
   );
   const visibleNodes = useMemo(
     () => activeGraph.graph.nodes.filter((node) => isNodeVisibleByFilter(node, filters)),
@@ -460,8 +525,12 @@ export function MissionGraphPanel({
   );
   const visibleNodeIds = useMemo(() => new Set(visibleNodes.map((node) => node.id)), [visibleNodes]);
   const visibleEdges = useMemo(
-    () => activeGraph.graph.edges.filter((edge) => visibleNodeIds.has(edge.source) && visibleNodeIds.has(edge.target)),
-    [activeGraph.graph.edges, visibleNodeIds],
+    () => activeGraph.graph.edges.filter((edge) => (
+      visibleNodeIds.has(edge.source)
+      && visibleNodeIds.has(edge.target)
+      && isEdgeVisibleByFilter(edge, relationFilters)
+    )),
+    [activeGraph.graph.edges, relationFilters, visibleNodeIds],
   );
   const visibleGraph = useMemo(
     () => ({
@@ -704,6 +773,19 @@ export function MissionGraphPanel({
     }));
   };
 
+  const updateRelationFilter = (key: VisibleRelationKind) => {
+    if (relationFilters[key] && activeRelationFilterCount === 1) {
+      setFilterNotice("최소 하나의 관계 필터는 유지해야 합니다.");
+      return;
+    }
+
+    setFilterNotice(null);
+    setRelationFilters((current) => ({
+      ...current,
+      [key]: !current[key],
+    }));
+  };
+
   const searchIssues = () => {
     const query = searchQuery.trim();
     if (!query) {
@@ -772,6 +854,13 @@ export function MissionGraphPanel({
         {(["parent", "child", "standalone", "agent"] as VisibleNodeKind[]).map((key) => (
           <button key={key} type="button" style={toggleButtonStyle(filters[key])} onClick={() => updateFilter(key)}>
             {key} {filterSummary[key]}
+          </button>
+        ))}
+      </div>
+      <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
+        {(["parent", "child", "related", "reissue", "spawned_followup", "assignee"] as VisibleRelationKind[]).map((key) => (
+          <button key={key} type="button" style={toggleButtonStyle(relationFilters[key])} onClick={() => updateRelationFilter(key)}>
+            {relationLabel(key)} {relationSummary[key]}
           </button>
         ))}
         <button type="button" style={toggleButtonStyle(visibleMode)} onClick={() => setVisibleMode((value) => !value)}>
@@ -899,6 +988,9 @@ export function MissionGraphPanel({
       <div style={{ display: "flex", gap: "8px", flexWrap: "wrap", alignItems: "center" }}>
         <span style={{ ...mutedStyle, padding: "4px 8px", borderRadius: "999px", background: "color-mix(in srgb, var(--muted, #e5e7eb) 52%, transparent)" }}>
           parent / child / standalone / agent 필터
+        </span>
+        <span style={{ ...mutedStyle, padding: "4px 8px", borderRadius: "999px", background: "color-mix(in srgb, var(--muted, #e5e7eb) 52%, transparent)" }}>
+          parent / child / related / reissue / spawned / assignee 관계 필터
         </span>
         <span style={{ ...mutedStyle, padding: "4px 8px", borderRadius: "999px", background: "color-mix(in srgb, var(--muted, #e5e7eb) 52%, transparent)" }}>
           visible mode on = 클릭한 노드의 연관 관계를 고정
