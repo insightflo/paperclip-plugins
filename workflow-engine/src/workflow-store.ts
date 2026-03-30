@@ -267,7 +267,12 @@ export async function listActiveRuns(
     scopeId: companyId,
   });
 
-  return runs.filter((run: PluginEntityRecord) => run.status === "running");
+  return runs.filter((run: PluginEntityRecord) => {
+    const runCompanyId = typeof (run.data as Partial<WorkflowRun>).companyId === "string"
+      ? (run.data as Partial<WorkflowRun>).companyId!.trim()
+      : "";
+    return run.status === "running" && runCompanyId === companyId;
+  });
 }
 
 export async function listRecentRuns(
@@ -282,6 +287,12 @@ export async function listRecentRuns(
   });
 
   return runs
+    .filter((run: PluginEntityRecord) => {
+      const runCompanyId = typeof (run.data as Partial<WorkflowRun>).companyId === "string"
+        ? (run.data as Partial<WorkflowRun>).companyId!.trim()
+        : "";
+      return runCompanyId === companyId;
+    })
     .sort((a: PluginEntityRecord, b: PluginEntityRecord) => {
       const aData = a.data as Partial<WorkflowRun>;
       const bData = b.data as Partial<WorkflowRun>;
@@ -305,7 +316,8 @@ export async function listWorkflowRunsByWorkflowId(
 
   return runs.filter(
     (run: PluginEntityRecord) =>
-      (run.data as Partial<WorkflowRun>).workflowId === workflowId,
+      (run.data as Partial<WorkflowRun>).workflowId === workflowId &&
+      (run.data as Partial<WorkflowRun>).companyId === companyId,
   );
 }
 

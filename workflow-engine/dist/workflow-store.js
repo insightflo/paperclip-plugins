@@ -130,7 +130,12 @@ export async function listActiveRuns(ctx, companyId) {
         scopeKind: "company",
         scopeId: companyId,
     });
-    return runs.filter((run) => run.status === "running");
+    return runs.filter((run) => {
+        const runCompanyId = typeof run.data.companyId === "string"
+            ? run.data.companyId.trim()
+            : "";
+        return run.status === "running" && runCompanyId === companyId;
+    });
 }
 export async function listRecentRuns(ctx, companyId, limit = 20) {
     const runs = await ctx.entities.list({
@@ -139,6 +144,12 @@ export async function listRecentRuns(ctx, companyId, limit = 20) {
         scopeId: companyId,
     });
     return runs
+        .filter((run) => {
+        const runCompanyId = typeof run.data.companyId === "string"
+            ? run.data.companyId.trim()
+            : "";
+        return runCompanyId === companyId;
+    })
         .sort((a, b) => {
         const aData = a.data;
         const bData = b.data;
@@ -154,7 +165,8 @@ export async function listWorkflowRunsByWorkflowId(ctx, companyId, workflowId) {
         scopeKind: "company",
         scopeId: companyId,
     });
-    return runs.filter((run) => run.data.workflowId === workflowId);
+    return runs.filter((run) => run.data.workflowId === workflowId &&
+        run.data.companyId === companyId);
 }
 export async function updateWorkflowRun(ctx, id, updates) {
     const current = await requireEntityByType(ctx, id, ENTITY_TYPES.workflowRun, "Workflow run");
