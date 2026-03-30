@@ -498,6 +498,7 @@ async function startWorkflow(ctx, workflowId, companyId, options) {
         runLabel,
         startedAt: new Date().toISOString(),
         status: RUN_STATUSES.running,
+        triggerSource: options?.triggerSource,
         workflowId: typedWorkflowDefinition.id,
         workflowName: typedWorkflowDefinition.data.name,
     }));
@@ -1073,6 +1074,7 @@ const plugin = definePlugin({
                         }
                         await startWorkflow(ctx, def.id, event.companyId, {
                             parentIssueId: triggerIssueId || undefined,
+                            triggerSource: "label",
                         });
                         ctx.logger.info("Auto-started workflow from issue label trigger", {
                             companyId: event.companyId,
@@ -1233,6 +1235,7 @@ const plugin = definePlugin({
             return await startWorkflow(ctx, workflowId, companyId, {
                 createParentIssue,
                 parentIssueId: parentIssueId || undefined,
+                triggerSource: "manual",
             });
         });
         ctx.actions.register("update-workflow", async (rawParams) => {
@@ -1317,6 +1320,7 @@ const plugin = definePlugin({
             return await startWorkflow(ctx, workflowId, companyId, {
                 createParentIssue,
                 parentIssueId: parentIssueId || undefined,
+                triggerSource: "api",
             });
         });
         registerDataHandler(ctx, "create-workflow", async (params) => {
