@@ -1,2 +1,2 @@
-declare const plugin: import("@paperclipai/plugin-sdk").PaperclipPlugin;
+declare const plugin: any;
 export default plugin;

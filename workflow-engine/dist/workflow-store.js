@@ -1,5 +1,28 @@
 import { randomUUID } from "node:crypto";
 import { ENTITY_TYPES } from "./constants.js";
+export function formatDateKeyInTimezone(date, timezone) {
+    if (!timezone) {
+        return date.toISOString().slice(0, 10);
+    }
+    try {
+        const parts = new Intl.DateTimeFormat("en-CA", {
+            timeZone: timezone,
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+        }).formatToParts(date);
+        const year = parts.find((part) => part.type === "year")?.value;
+        const month = parts.find((part) => part.type === "month")?.value;
+        const day = parts.find((part) => part.type === "day")?.value;
+        if (!year || !month || !day) {
+            return null;
+        }
+        return `${year}-${month}-${day}`;
+    }
+    catch {
+        return null;
+    }
+}
 function toTypedRecord(record, entityType) {
     if (record.entityType !== entityType) {
         throw new Error(`Expected entity type "${entityType}", got "${record.entityType}"`);

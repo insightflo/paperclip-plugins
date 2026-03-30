@@ -2,6 +2,7 @@ import type { PluginContext, PluginEntityRecord } from "@paperclipai/plugin-sdk"
 
 import { ENTITY_TYPES, RUN_STATUSES, STEP_STATUSES } from "./constants.js";
 import {
+  formatDateKeyInTimezone,
   getWorkflowDefinition,
   getWorkflowRun,
   listActiveRuns,
@@ -122,13 +123,13 @@ function parseMaxDailyRuns(value: unknown): number | undefined {
   return normalized;
 }
 
-function toIsoDay(value: string): string | null {
+function toDayKey(value: string, timezone?: string): string | null {
   const parsed = Date.parse(value);
   if (!Number.isFinite(parsed)) {
     return null;
   }
 
-  return new Date(parsed).toISOString().slice(0, 10);
+  return formatDateKeyInTimezone(new Date(parsed), timezone);
 }
 
 function readDateTimePart(
@@ -241,6 +242,7 @@ async function countWorkflowRunsForDay(
   companyId: string,
   workflowId: string,
   dayKey: string,
+  timezone?: string,
   onlyScheduled = true,
 ): Promise<number> {
   const runs = await listWorkflowRunsByWorkflowId(ctx, companyId, workflowId);
@@ -248,7 +250,7 @@ async function countWorkflowRunsForDay(
 
   for (const runRecord of runs) {
     const run = toWorkflowRunRecord(runRecord);
-    if (toIsoDay(run.data.startedAt) !== dayKey) continue;
+    if (toDayKey(run.data.startedAt, timezone) !== dayKey) continue;
     if (onlyScheduled && run.data.triggerSource && run.data.triggerSource !== "schedule") continue;
     count += 1;
   }
@@ -325,8 +327,8 @@ export async function runScheduledWorkflows(ctx: PluginContext): Promise<void> {
       const maxDailyRuns = parseMaxDailyRuns((def.data as WorkflowDefinition).maxDailyRuns);
       if (maxDailyRuns !== 0) {
         if (typeof maxDailyRuns === "number" && maxDailyRuns > 0) {
-          const dayKey = now.toISOString().slice(0, 10);
-          const runCountToday = await countWorkflowRunsForDay(ctx, companyId, def.id, dayKey);
+          const dayKey = formatDateKeyInTimezone(effectiveScheduleNow, timezone) ?? now.toISOString().slice(0, 10);
+          const runCountToday = await countWorkflowRunsForDay(ctx, companyId, def.id, dayKey, timezone);
           if (runCountToday >= maxDailyRuns) {
             ctx.logger.info("Skipped scheduled workflow start because maxDailyRuns was reached", {
               companyId,
@@ -339,7 +341,7 @@ export async function runScheduledWorkflows(ctx: PluginContext): Promise<void> {
             continue;
           }
         } else {
-          const dailyGuard = await checkDailyRunGuard(ctx, companyId, def.id, now);
+          const dailyGuard = await checkDailyRunGuard(ctx, companyId, def.id, effectiveScheduleNow, timezone || undefined);
           if (dailyGuard.blocked) {
             ctx.logger.info("Skipped scheduled workflow start because a same-day run already exists", {
               companyId,

@@ -1,5 +1,5 @@
 import { ENTITY_TYPES, RUN_STATUSES, STEP_STATUSES } from "./constants.js";
-import { getWorkflowDefinition, getWorkflowRun, listActiveRuns, listStepRuns, listWorkflowDefinitions, listWorkflowRunsByWorkflowId, updateStepRun, updateWorkflowDefinition, updateWorkflowRun, } from "./workflow-store.js";
+import { formatDateKeyInTimezone, getWorkflowDefinition, getWorkflowRun, listActiveRuns, listStepRuns, listWorkflowDefinitions, listWorkflowRunsByWorkflowId, updateStepRun, updateWorkflowDefinition, updateWorkflowRun, } from "./workflow-store.js";
 import { checkDailyRunGuard } from "./run-guards.js";
 import { TERMINAL_STEP_STATUSES, findStepDefinition, getStepAgentName, toWorkflowDefinitionRecord, toWorkflowRunRecord, toWorkflowStepRunRecord, } from "./workflow-utils.js";
 const DEFAULT_STEP_TIMEOUT_MS = 300_000;
@@ -85,12 +85,12 @@ function parseMaxDailyRuns(value) {
     }
     return normalized;
 }
-function toIsoDay(value) {
+function toDayKey(value, timezone) {
     const parsed = Date.parse(value);
     if (!Number.isFinite(parsed)) {
         return null;
     }
-    return new Date(parsed).toISOString().slice(0, 10);
+    return formatDateKeyInTimezone(new Date(parsed), timezone);
 }
 function readDateTimePart(parts, type) {
     const part = parts.find((candidate) => candidate.type === type);
@@ -177,12 +177,12 @@ function isStepTimedOut(stepRun, thresholdMs) {
     }
     return Date.now() - referenceMs > thresholdMs;
 }
-async function countWorkflowRunsForDay(ctx, companyId, workflowId, dayKey, onlyScheduled = true) {
+async function countWorkflowRunsForDay(ctx, companyId, workflowId, dayKey, timezone, onlyScheduled = true) {
     const runs = await listWorkflowRunsByWorkflowId(ctx, companyId, workflowId);
     let count = 0;
     for (const runRecord of runs) {
         const run = toWorkflowRunRecord(runRecord);
-        if (toIsoDay(run.data.startedAt) !== dayKey)
+        if (toDayKey(run.data.startedAt, timezone) !== dayKey)
             continue;
         if (onlyScheduled && run.data.triggerSource && run.data.triggerSource !== "schedule")
             continue;
@@ -244,8 +244,8 @@ export async function runScheduledWorkflows(ctx) {
             const maxDailyRuns = parseMaxDailyRuns(def.data.maxDailyRuns);
             if (maxDailyRuns !== 0) {
                 if (typeof maxDailyRuns === "number" && maxDailyRuns > 0) {
-                    const dayKey = now.toISOString().slice(0, 10);
-                    const runCountToday = await countWorkflowRunsForDay(ctx, companyId, def.id, dayKey);
+                    const dayKey = formatDateKeyInTimezone(effectiveScheduleNow, timezone) ?? now.toISOString().slice(0, 10);
+                    const runCountToday = await countWorkflowRunsForDay(ctx, companyId, def.id, dayKey, timezone);
                     if (runCountToday >= maxDailyRuns) {
                         ctx.logger.info("Skipped scheduled workflow start because maxDailyRuns was reached", {
                             companyId,
@@ -259,7 +259,7 @@ export async function runScheduledWorkflows(ctx) {
                     }
                 }
                 else {
-                    const dailyGuard = await checkDailyRunGuard(ctx, companyId, def.id, now);
+                    const dailyGuard = await checkDailyRunGuard(ctx, companyId, def.id, effectiveScheduleNow, timezone || undefined);
                     if (dailyGuard.blocked) {
                         ctx.logger.info("Skipped scheduled workflow start because a same-day run already exists", {
                             companyId,

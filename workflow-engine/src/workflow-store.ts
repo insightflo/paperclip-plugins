@@ -57,6 +57,30 @@ export interface WorkflowStepRun extends Record<string, unknown> {
 type TypedEntityRecord<T> = Omit<PluginEntityRecord, "data"> & { data: T };
 type PluginEntityScopeKind = "instance" | "company" | "project" | "issue";
 
+export function formatDateKeyInTimezone(date: Date, timezone?: string): string | null {
+  if (!timezone) {
+    return date.toISOString().slice(0, 10);
+  }
+
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: timezone,
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    }).formatToParts(date);
+    const year = parts.find((part) => part.type === "year")?.value;
+    const month = parts.find((part) => part.type === "month")?.value;
+    const day = parts.find((part) => part.type === "day")?.value;
+    if (!year || !month || !day) {
+      return null;
+    }
+    return `${year}-${month}-${day}`;
+  } catch {
+    return null;
+  }
+}
+
 function toTypedRecord<T>(
   record: PluginEntityRecord,
   entityType: string,

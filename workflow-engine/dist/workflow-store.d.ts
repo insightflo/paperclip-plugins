@@ -40,6 +40,7 @@ export interface WorkflowStepRun extends Record<string, unknown> {
     completedAt?: string;
     sessionId?: string;
 }
+export declare function formatDateKeyInTimezone(date: Date, timezone?: string): string | null;
 export declare function createWorkflowDefinition(ctx: PluginContext, def: WorkflowDefinition): Promise<PluginEntityRecord>;
 export declare function getWorkflowDefinition(ctx: PluginContext, id: string): Promise<(PluginEntityRecord & {
     data: WorkflowDefinition;

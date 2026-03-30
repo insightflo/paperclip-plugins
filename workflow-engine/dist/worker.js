@@ -1,7 +1,7 @@
 import { definePlugin, runWorker, } from "@paperclipai/plugin-sdk";
 import { JOB_KEYS, RUN_STATUSES, STEP_STATUSES } from "./constants.js";
 import { getEscalationTarget, getNextSteps, getRetryInfo, } from "./dag-engine.js";
-import { checkIdempotency, createWorkflowDefinition, createWorkflowRun, listWorkflowRunsByWorkflowId, updateWorkflowDefinition, createStepRun, findStepRunByIssueId, getStepRun, getWorkflowDefinition, getWorkflowRun, listActiveRuns, listRecentRuns, listStepRuns, listWorkflowDefinitions, markIdempotency, updateStepRun, updateWorkflowRun, } from "./workflow-store.js";
+import { formatDateKeyInTimezone, checkIdempotency, createWorkflowDefinition, createWorkflowRun, listWorkflowRunsByWorkflowId, updateWorkflowDefinition, createStepRun, findStepRunByIssueId, getStepRun, getWorkflowDefinition, getWorkflowRun, listActiveRuns, listRecentRuns, listStepRuns, listWorkflowDefinitions, markIdempotency, updateStepRun, updateWorkflowRun, } from "./workflow-store.js";
 import { TERMINAL_STEP_STATUSES, findStepDefinition, getStepAgentName, getStepAgentNameHint, toWorkflowDefinitionRecord, toWorkflowRunRecord, toWorkflowStepRunRecord, } from "./workflow-utils.js";
 import { checkDailyRunGuard } from "./run-guards.js";
 import { ensureIssueLabels } from "./issue-labels.js";
@@ -634,11 +634,21 @@ async function startWorkflow(ctx, workflowId, companyId, options) {
     }
     // Build run label with date + daily run number
     const now = new Date();
-    const dateStr = now.toISOString().slice(0, 10);
+    const timezone = typeof typedWorkflowDefinition.data.timezone === "string"
+        ? typedWorkflowDefinition.data.timezone.trim()
+        : "";
+    const dateStr = formatDateKeyInTimezone(now, timezone || undefined) ?? now.toISOString().slice(0, 10);
     const existingRuns = await listWorkflowRunsByWorkflowId(ctx, companyId, workflowId);
     const todayRuns = existingRuns.filter((r) => {
         const started = r.data.startedAt;
-        return typeof started === "string" && started.startsWith(dateStr);
+        if (typeof started !== "string") {
+            return false;
+        }
+        const startedAt = Date.parse(started);
+        if (!Number.isFinite(startedAt)) {
+            return false;
+        }
+        return formatDateKeyInTimezone(new Date(startedAt), timezone || undefined) === dateStr;
     });
     const runNumber = todayRuns.length + 1;
     const runLabel = `#${dateStr}-${runNumber}`;
@@ -1257,7 +1267,8 @@ const plugin = definePlugin({
                         ? event.entityId.trim()
                         : "";
                     for (const def of matched) {
-                        const dailyGuard = await checkDailyRunGuard(ctx, event.companyId, def.id);
+                        const timezone = typeof def.data.timezone === "string" ? def.data.timezone.trim() : "";
+                        const dailyGuard = await checkDailyRunGuard(ctx, event.companyId, def.id, new Date(), timezone || undefined);
                         if (dailyGuard.blocked) {
                             ctx.logger.info("Skipped workflow auto-start from issue label trigger because a same-day run already exists", {
                                 companyId: event.companyId,

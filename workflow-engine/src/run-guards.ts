@@ -1,6 +1,7 @@
 import type { PluginContext } from "@paperclipai/plugin-sdk";
 
 import { RUN_STATUSES } from "./constants.js";
+import { formatDateKeyInTimezone } from "./workflow-store.js";
 import { listWorkflowRunsByWorkflowId } from "./workflow-store.js";
 import { toWorkflowRunRecord } from "./workflow-utils.js";
 
@@ -9,13 +10,13 @@ const BLOCKING_RUN_STATUSES = new Set<string>([
   RUN_STATUSES.completed,
 ]);
 
-function toIsoDay(value: string): string | null {
+function toDayKey(value: string, timezone?: string): string | null {
   const parsed = Date.parse(value);
   if (!Number.isFinite(parsed)) {
     return null;
   }
 
-  return new Date(parsed).toISOString().slice(0, 10);
+  return formatDateKeyInTimezone(new Date(parsed), timezone);
 }
 
 export interface DailyRunGuardResult {
@@ -30,8 +31,9 @@ export async function checkDailyRunGuard(
   companyId: string,
   workflowId: string,
   referenceDate: Date = new Date(),
+  timezone?: string,
 ): Promise<DailyRunGuardResult> {
-  const dayKey = referenceDate.toISOString().slice(0, 10);
+  const dayKey = formatDateKeyInTimezone(referenceDate, timezone) ?? referenceDate.toISOString().slice(0, 10);
   const runs = await listWorkflowRunsByWorkflowId(ctx, companyId, workflowId);
 
   for (const runRecord of runs) {
@@ -40,7 +42,7 @@ export async function checkDailyRunGuard(
       continue;
     }
 
-    const runDay = toIsoDay(run.data.startedAt);
+    const runDay = toDayKey(run.data.startedAt, timezone);
     if (runDay !== dayKey) {
       continue;
     }

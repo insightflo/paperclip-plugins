@@ -5,4 +5,4 @@ export interface DailyRunGuardResult {
     existingRunId?: string;
     existingStatus?: string;
 }
-export declare function checkDailyRunGuard(ctx: PluginContext, companyId: string, workflowId: string, referenceDate?: Date): Promise<DailyRunGuardResult>;
+export declare function checkDailyRunGuard(ctx: PluginContext, companyId: string, workflowId: string, referenceDate?: Date, timezone?: string): Promise<DailyRunGuardResult>;

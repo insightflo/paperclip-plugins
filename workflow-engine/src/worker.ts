@@ -14,6 +14,7 @@ import {
   type WorkflowStep,
 } from "./dag-engine.js";
 import {
+  formatDateKeyInTimezone,
   checkIdempotency,
   createWorkflowDefinition,
   createWorkflowRun,
@@ -888,11 +889,21 @@ async function startWorkflow(
 
   // Build run label with date + daily run number
   const now = new Date();
-  const dateStr = now.toISOString().slice(0, 10);
+  const timezone = typeof typedWorkflowDefinition.data.timezone === "string"
+    ? typedWorkflowDefinition.data.timezone.trim()
+    : "";
+  const dateStr = formatDateKeyInTimezone(now, timezone || undefined) ?? now.toISOString().slice(0, 10);
   const existingRuns = await listWorkflowRunsByWorkflowId(ctx, companyId, workflowId);
   const todayRuns = existingRuns.filter((r: PluginEntityRecord) => {
     const started = (r.data as Record<string, unknown>).startedAt;
-    return typeof started === "string" && started.startsWith(dateStr);
+    if (typeof started !== "string") {
+      return false;
+    }
+    const startedAt = Date.parse(started);
+    if (!Number.isFinite(startedAt)) {
+      return false;
+    }
+    return formatDateKeyInTimezone(new Date(startedAt), timezone || undefined) === dateStr;
   });
   const runNumber = todayRuns.length + 1;
   const runLabel = `#${dateStr}-${runNumber}`;
@@ -1686,7 +1697,8 @@ const plugin = definePlugin({
             ? event.entityId.trim()
             : "";
           for (const def of matched) {
-            const dailyGuard = await checkDailyRunGuard(ctx, event.companyId, def.id);
+            const timezone = typeof def.data.timezone === "string" ? def.data.timezone.trim() : "";
+            const dailyGuard = await checkDailyRunGuard(ctx, event.companyId, def.id, new Date(), timezone || undefined);
             if (dailyGuard.blocked) {
               ctx.logger.info("Skipped workflow auto-start from issue label trigger because a same-day run already exists", {
                 companyId: event.companyId,
