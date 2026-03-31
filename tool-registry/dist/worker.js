@@ -112,12 +112,23 @@ async function writeExecutionLog(ctx, log) {
     });
 }
 async function listExecutionLogs(ctx, companyId, limit) {
-    const listed = await ctx.entities.list({
-        entityType: ENTITY_TYPES.executionLog,
-        scopeKind: "company",
-        scopeId: companyId,
-        limit: Math.max(limit, 200),
-    });
+    const pageSize = Math.max(limit, 200);
+    const listed = [];
+    let offset = 0;
+    while (true) {
+        const page = await ctx.entities.list({
+            entityType: ENTITY_TYPES.executionLog,
+            scopeKind: "company",
+            scopeId: companyId,
+            limit: pageSize,
+            offset,
+        });
+        listed.push(...page);
+        if (page.length < pageSize) {
+            break;
+        }
+        offset += page.length;
+    }
     return listed
         .filter((record) => record.entityType === ENTITY_TYPES.executionLog)
         .map((record) => ({

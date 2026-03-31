@@ -113,6 +113,25 @@ async function listAllCompanyStepRuns(ctx, companyId) {
         offset += page.length;
     }
 }
+async function listAllCompanyWorkflowRuns(ctx, companyId) {
+    const pageSize = 200;
+    const workflowRuns = [];
+    let offset = 0;
+    while (true) {
+        const page = await ctx.entities.list({
+            entityType: ENTITY_TYPES.workflowRun,
+            scopeKind: "company",
+            scopeId: companyId,
+            limit: pageSize,
+            offset,
+        });
+        workflowRuns.push(...page);
+        if (page.length < pageSize) {
+            return workflowRuns;
+        }
+        offset += page.length;
+    }
+}
 export async function createWorkflowDefinition(ctx, def) {
     return await ctx.entities.upsert({
         entityType: ENTITY_TYPES.workflowDefinition,
@@ -162,11 +181,7 @@ export async function getWorkflowRun(ctx, id) {
     return await getEntityByType(ctx, id, ENTITY_TYPES.workflowRun);
 }
 export async function listActiveRuns(ctx, companyId) {
-    const runs = await ctx.entities.list({
-        entityType: ENTITY_TYPES.workflowRun,
-        scopeKind: "company",
-        scopeId: companyId,
-    });
+    const runs = await listAllCompanyWorkflowRuns(ctx, companyId);
     return runs.filter((run) => {
         const runCompanyId = typeof run.data.companyId === "string"
             ? run.data.companyId.trim()
@@ -175,11 +190,7 @@ export async function listActiveRuns(ctx, companyId) {
     });
 }
 export async function listRecentRuns(ctx, companyId, limit = 20) {
-    const runs = await ctx.entities.list({
-        entityType: ENTITY_TYPES.workflowRun,
-        scopeKind: "company",
-        scopeId: companyId,
-    });
+    const runs = await listAllCompanyWorkflowRuns(ctx, companyId);
     return runs
         .filter((run) => {
         const runCompanyId = typeof run.data.companyId === "string"
@@ -197,11 +208,7 @@ export async function listRecentRuns(ctx, companyId, limit = 20) {
         .slice(0, Math.max(0, limit));
 }
 export async function listWorkflowRunsByWorkflowId(ctx, companyId, workflowId) {
-    const runs = await ctx.entities.list({
-        entityType: ENTITY_TYPES.workflowRun,
-        scopeKind: "company",
-        scopeId: companyId,
-    });
+    const runs = await listAllCompanyWorkflowRuns(ctx, companyId);
     return runs.filter((run) => run.data.workflowId === workflowId &&
         run.data.companyId === companyId);
 }

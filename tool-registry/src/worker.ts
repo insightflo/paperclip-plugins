@@ -194,12 +194,27 @@ async function listExecutionLogs(
   companyId: string,
   limit: number,
 ): Promise<Array<{ id: string; createdAt: string; data: ExecutionLog }>> {
-  const listed = await ctx.entities.list({
-    entityType: ENTITY_TYPES.executionLog,
-    scopeKind: "company",
-    scopeId: companyId,
-    limit: Math.max(limit, 200),
-  } as Parameters<PluginContext["entities"]["list"]>[0]);
+  const pageSize = Math.max(limit, 200);
+  const listed: PluginEntityRecord[] = [];
+  let offset = 0;
+
+  while (true) {
+    const page = await ctx.entities.list({
+      entityType: ENTITY_TYPES.executionLog,
+      scopeKind: "company",
+      scopeId: companyId,
+      limit: pageSize,
+      offset,
+    } as Parameters<PluginContext["entities"]["list"]>[0]);
+
+    listed.push(...page);
+
+    if (page.length < pageSize) {
+      break;
+    }
+
+    offset += page.length;
+  }
 
   return listed
     .filter((record) => record.entityType === ENTITY_TYPES.executionLog)

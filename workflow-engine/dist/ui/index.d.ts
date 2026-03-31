@@ -6,4 +6,4 @@ export declare function WorkflowSidebarLink({ context }: {
     context: {
         companyPrefix?: string | null;
     };
-}): any;
+}): import("react/jsx-runtime").JSX.Element;

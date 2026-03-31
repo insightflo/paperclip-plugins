@@ -216,6 +216,33 @@ async function listAllCompanyStepRuns(
   }
 }
 
+async function listAllCompanyWorkflowRuns(
+  ctx: PluginContext,
+  companyId: string,
+): Promise<PluginEntityRecord[]> {
+  const pageSize = 200;
+  const workflowRuns: PluginEntityRecord[] = [];
+  let offset = 0;
+
+  while (true) {
+    const page = await ctx.entities.list({
+      entityType: ENTITY_TYPES.workflowRun,
+      scopeKind: "company",
+      scopeId: companyId,
+      limit: pageSize,
+      offset,
+    });
+
+    workflowRuns.push(...page);
+
+    if (page.length < pageSize) {
+      return workflowRuns;
+    }
+
+    offset += page.length;
+  }
+}
+
 export async function createWorkflowDefinition(
   ctx: PluginContext,
   def: WorkflowDefinition,
@@ -303,11 +330,7 @@ export async function listActiveRuns(
   ctx: PluginContext,
   companyId: string,
 ): Promise<PluginEntityRecord[]> {
-  const runs = await ctx.entities.list({
-    entityType: ENTITY_TYPES.workflowRun,
-    scopeKind: "company",
-    scopeId: companyId,
-  });
+  const runs = await listAllCompanyWorkflowRuns(ctx, companyId);
 
   return runs.filter((run: PluginEntityRecord) => {
     const runCompanyId = typeof (run.data as Partial<WorkflowRun>).companyId === "string"
@@ -322,11 +345,7 @@ export async function listRecentRuns(
   companyId: string,
   limit = 20,
 ): Promise<PluginEntityRecord[]> {
-  const runs = await ctx.entities.list({
-    entityType: ENTITY_TYPES.workflowRun,
-    scopeKind: "company",
-    scopeId: companyId,
-  });
+  const runs = await listAllCompanyWorkflowRuns(ctx, companyId);
 
   return runs
     .filter((run: PluginEntityRecord) => {
@@ -350,11 +369,7 @@ export async function listWorkflowRunsByWorkflowId(
   companyId: string,
   workflowId: string,
 ): Promise<PluginEntityRecord[]> {
-  const runs = await ctx.entities.list({
-    entityType: ENTITY_TYPES.workflowRun,
-    scopeKind: "company",
-    scopeId: companyId,
-  });
+  const runs = await listAllCompanyWorkflowRuns(ctx, companyId);
 
   return runs.filter(
     (run: PluginEntityRecord) =>
