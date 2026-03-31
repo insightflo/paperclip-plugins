@@ -378,6 +378,20 @@ async function resolveProviderCompany(ctx: PluginContext, config: BridgePluginCo
   return companies.find((company) => normalizeName(company.name) === normalizeName(config.providerCompanyName)) ?? null;
 }
 
+async function resolveCompanyCeoAgentId(
+  ctx: PluginContext,
+  companyId: string,
+): Promise<string> {
+  if (!companyId) {
+    return "";
+  }
+
+  const agents = await ctx.agents.list({ companyId, limit: 200, offset: 0 });
+  const ceo = agents.find((agent) => normalizeName(asString(agent.role)) === "ceo")
+    ?? agents.find((agent) => normalizeName(asString(agent.title)) === "ceo");
+  return ceo?.id ?? "";
+}
+
 function companyNameMap(companies: CompanyRecord[]): Map<string, string> {
   return new Map(companies.map((company) => [company.id, company.name]));
 }
@@ -945,9 +959,31 @@ async function handleIssueCreated(ctx: PluginContext, event: PluginEvent): Promi
     }
   }
 
+  const providerCeoAgentId = await resolveCompanyCeoAgentId(ctx, providerCompany.id);
+  if (providerCeoAgentId) {
+    mirrorCreateParams.assigneeAgentId = providerCeoAgentId;
+  }
+
   const mirrorIssue = await ctx.issues.create(
     mirrorCreateParams as Parameters<typeof ctx.issues.create>[0],
   );
+
+  await ctx.issues.update(
+    sourceIssueId,
+    {
+      status: "blocked",
+      assigneeAgentId: null,
+    } as IssuePatch,
+    refs.companyId,
+  );
+
+  const handoffComment = [
+    `보수팀으로 유지보수 handoff 완료: ${mirrorIssue.identifier ?? mirrorIssue.id}`,
+    `- 대상 회사: ${providerCompany.name}`,
+    providerCeoAgentId ? "- 처리 방식: 보수팀 CEO가 담당 할당 및 완료 보고를 관리" : "- 처리 방식: 보수팀에서 후속 triage 필요",
+  ].join("\n");
+
+  await ctx.issues.createComment(sourceIssueId, handoffComment, refs.companyId);
 
   await upsertBridgePair(ctx, {
     localCompanyId: refs.companyId,
