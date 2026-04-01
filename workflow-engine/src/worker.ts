@@ -163,6 +163,17 @@ function getPaperclipApiUrl(): string {
   return process.env.PAPERCLIP_API_URL || "http://localhost:3100";
 }
 
+function shouldForceFreshSessionForAgentStep(
+  stepTitle: string,
+  agentMetadata: Record<string, unknown> | null | undefined,
+): boolean {
+  if (agentMetadata?.issueCompletionAuthority === true) {
+    return true;
+  }
+
+  return /검수|review/i.test(stepTitle);
+}
+
 function buildToolResultIdempotencyKey(stepRunId: string, success: boolean): string {
   return `tool-result:${stepRunId}:${success ? "success" : "failure"}`;
 }
@@ -173,6 +184,91 @@ function buildAdvanceWorkflowIdempotencyKey(workflowRunId: string, stepRunId: st
 
 function buildStepActivationKey(runId: string, stepId: string): string {
   return `step-activation:${runId}:${stepId}`;
+}
+
+function formatDuration(startedAt: string | null | undefined, completedAt: string | null | undefined): string {
+  const startedMs = Date.parse(typeof startedAt === "string" ? startedAt : "");
+  const completedMs = Date.parse(typeof completedAt === "string" ? completedAt : "");
+  if (!Number.isFinite(startedMs) || !Number.isFinite(completedMs) || completedMs < startedMs) {
+    return "unknown";
+  }
+
+  const totalSeconds = Math.round((completedMs - startedMs) / 1000);
+  if (totalSeconds < 60) {
+    return `${totalSeconds}s`;
+  }
+
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  if (minutes < 60) {
+    return seconds > 0 ? `${minutes}m ${seconds}s` : `${minutes}m`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+  const remMinutes = minutes % 60;
+  return remMinutes > 0 ? `${hours}h ${remMinutes}m` : `${hours}h`;
+}
+
+function buildWorkflowTemplateVars(
+  workflowRun: WorkflowRunRecord,
+  workflowDefinition: WorkflowDefinitionRecord,
+): Record<string, string> {
+  return {
+    date: resolveWorkflowRunDate(workflowRun, workflowDefinition),
+    runNumber: resolveWorkflowRunNumber(workflowRun),
+    runLabel: workflowRun.data.runLabel ?? "",
+    workflowName: workflowRun.data.workflowName,
+  };
+}
+
+function areStepDependenciesSatisfied(
+  workflowDefinition: WorkflowDefinitionRecord,
+  stepId: string,
+  stepRunsById: Map<string, WorkflowStepRunRecord>,
+): boolean {
+  const stepDef = findStepDefinition(workflowDefinition, stepId);
+  if (!stepDef) {
+    return false;
+  }
+
+  return stepDef.dependsOn.every((depId) => {
+    const depRun = stepRunsById.get(depId);
+    if (!depRun) {
+      return false;
+    }
+
+    return depRun.data.status === STEP_STATUSES.done || depRun.data.status === STEP_STATUSES.skipped;
+  });
+}
+
+async function resetWorkflowStepIssueForRerun(
+  ctx: PluginContext,
+  issueId: string,
+  companyId: string,
+  stepId: string,
+  workflowName: string,
+): Promise<void> {
+  try {
+    await ctx.issues.update(issueId, { status: "todo" } as IssueUpdatePatch, companyId);
+    await ctx.issues.createComment(
+      issueId,
+      [
+        "### Workflow step rerun requested",
+        `- Step: ${stepId}`,
+        `- Workflow: ${workflowName}`,
+        `- Requested at: ${new Date().toISOString()}`,
+      ].join("\n"),
+      companyId,
+    );
+  } catch (error) {
+    ctx.logger.warn("Failed to reset workflow step issue for rerun", {
+      companyId,
+      error: summarizeError(error),
+      issueId,
+      stepId,
+      workflowName,
+    });
+  }
 }
 
 async function cancelActiveIssueRun(
@@ -372,6 +468,19 @@ function summarizeError(error: unknown): string {
   return String(error);
 }
 
+function buildTextExcerpt(value: unknown, maxLength = 2000): string {
+  if (typeof value !== "string") {
+    return "";
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  return trimmed.length > maxLength ? `${trimmed.slice(0, maxLength)}\n...(truncated)` : trimmed;
+}
+
 function parseOptionalNonNegativeInteger(value: unknown): number | undefined {
   if (typeof value !== "number" || !Number.isFinite(value)) {
     return undefined;
@@ -564,6 +673,36 @@ async function executeToolStep(
     return;
   }
 
+  if (stepRunRecord.data.issueId) {
+    const startedAt = stepRunRecord.data.startedAt ?? new Date().toISOString();
+    try {
+      await ctx.issues.update(
+        stepRunRecord.data.issueId,
+        { status: "in_progress" } as IssueUpdatePatch,
+        companyId,
+      );
+      await ctx.issues.createComment(
+        stepRunRecord.data.issueId,
+        [
+          `### Tool started: ${toolName}`,
+          `- Step: ${stepDef.id}`,
+          `- Started at: ${startedAt}`,
+          `- Workflow: ${workflowName}`,
+        ].join("\n"),
+        companyId,
+      );
+    } catch (error) {
+      ctx.logger.warn("Failed to mark tool step issue in progress", {
+        companyId,
+        error: summarizeError(error),
+        issueId: stepRunRecord.data.issueId,
+        stepId: stepDef.id,
+        toolName,
+        workflowName,
+      });
+    }
+  }
+
   const requestId = `${stepRunRecord.data.runId}:${stepDef.id}:${Date.now()}`;
   await ctx.events.emit("execute-tool-request", companyId, {
     requestId,
@@ -663,7 +802,10 @@ async function invokeAgentForStep(
         issueId: stepRunRecord.data.issueId,
         taskKey: `wf:${stepRunRecord.data.runId}:${agent.id}`,
       },
-      forceFreshSession: false,
+      forceFreshSession: shouldForceFreshSessionForAgentStep(
+        stepDef.title,
+        (agent.metadata as Record<string, unknown> | null | undefined) ?? null,
+      ),
     }),
   });
   if (!wakeupRes.ok) {
@@ -887,7 +1029,7 @@ async function activateBacklogStep(
     agentName: resolvedAgent.agentName ?? liveStepRun.data.agentName,
     issueId,
     startedAt: nextStartedAt,
-    status: STEP_STATUSES.todo,
+    status: isToolStep ? STEP_STATUSES.inProgress : STEP_STATUSES.todo,
   }));
 
   const stepType = stepDef.type ?? "agent";
@@ -913,6 +1055,185 @@ async function activateBacklogStep(
   } finally {
     inflightStepActivationKeys.delete(activationKey);
   }
+}
+
+async function rerunWorkflowStep(
+  ctx: PluginContext,
+  params: {
+    companyId: string;
+    issueId?: string;
+    stepRunId?: string;
+  },
+): Promise<{
+    issueId: string | null;
+    resumedRun: boolean;
+    runId: string;
+    stepId: string;
+    stepRunId: string;
+  }> {
+  const companyId = params.companyId;
+  const issueId = typeof params.issueId === "string" ? params.issueId.trim() : "";
+  const stepRunId = typeof params.stepRunId === "string" ? params.stepRunId.trim() : "";
+
+  let stepRunRecord: PluginEntityRecord | null = null;
+  if (stepRunId) {
+    stepRunRecord = await getStepRun(ctx, stepRunId);
+  } else if (issueId) {
+    stepRunRecord = await findStepRunByIssueId(ctx, issueId, companyId);
+  }
+
+  if (!stepRunRecord) {
+    throw new Error("Workflow step run not found");
+  }
+
+  const typedStepRun = toWorkflowStepRunRecord(stepRunRecord);
+  const workflowRunRecord = await getWorkflowRun(ctx, typedStepRun.data.runId);
+  if (!workflowRunRecord) {
+    throw new Error(`Workflow run not found: ${typedStepRun.data.runId}`);
+  }
+
+  const typedWorkflowRun = toWorkflowRunRecord(workflowRunRecord);
+  const workflowDefinition = await getWorkflowDefinition(ctx, typedWorkflowRun.data.workflowId);
+  if (!workflowDefinition) {
+    throw new Error(`Workflow definition not found: ${typedWorkflowRun.data.workflowId}`);
+  }
+
+  const typedWorkflowDefinition = toWorkflowDefinitionRecord(workflowDefinition);
+  const stepDef = findStepDefinition(typedWorkflowDefinition, typedStepRun.data.stepId);
+  if (!stepDef) {
+    throw new Error(`Workflow step definition not found: ${typedStepRun.data.stepId}`);
+  }
+
+  const stepRuns = (await listStepRuns(ctx, typedWorkflowRun.id, companyId)).map(toWorkflowStepRunRecord);
+  const stepRunsById = new Map(stepRuns.map((candidate) => [candidate.data.stepId, candidate]));
+  if (!areStepDependenciesSatisfied(typedWorkflowDefinition, typedStepRun.data.stepId, stepRunsById)) {
+    throw new Error(`Dependencies not satisfied for step: ${typedStepRun.data.stepId}`);
+  }
+
+  let resumedRun = false;
+  if (typedWorkflowRun.data.status !== RUN_STATUSES.running) {
+    await updateWorkflowRun(ctx, typedWorkflowRun.id, {
+      completedAt: undefined,
+      status: RUN_STATUSES.running,
+    });
+    resumedRun = true;
+  }
+
+  if (typedStepRun.data.issueId) {
+    await resetWorkflowStepIssueForRerun(
+      ctx,
+      typedStepRun.data.issueId,
+      companyId,
+      typedStepRun.data.stepId,
+      typedWorkflowRun.data.workflowName,
+    );
+  }
+
+  const resetStepRun = toWorkflowStepRunRecord(await updateStepRun(ctx, typedStepRun.id, {
+    completedAt: undefined,
+    startedAt: undefined,
+    status: STEP_STATUSES.backlog,
+  }));
+
+  const reactivatedStepRun = await activateBacklogStep(
+    ctx,
+    resetStepRun,
+    stepDef,
+    typedWorkflowRun.data.workflowName,
+    companyId,
+    {
+      parentIssueId: typedWorkflowRun.data.parentIssueId,
+      projectId: typedWorkflowDefinition.data.projectId,
+      goalId: typedWorkflowDefinition.data.goalId,
+      labelIds: typedWorkflowDefinition.data.labelIds as string[] | undefined,
+      runLabel: typedWorkflowRun.data.runLabel,
+      templateVars: buildWorkflowTemplateVars(typedWorkflowRun, typedWorkflowDefinition),
+    },
+  );
+
+  return {
+    issueId: reactivatedStepRun.data.issueId ?? null,
+    resumedRun,
+    runId: typedWorkflowRun.id,
+    stepId: reactivatedStepRun.data.stepId,
+    stepRunId: reactivatedStepRun.id,
+  };
+}
+
+async function resumeWorkflowRunState(
+  ctx: PluginContext,
+  runId: string,
+  companyId: string,
+): Promise<{
+    activatedStepIds: string[];
+    resumed: boolean;
+    runId: string;
+  }> {
+  const workflowRunRecord = await getWorkflowRun(ctx, runId);
+  if (!workflowRunRecord) {
+    throw new Error(`Workflow run not found: ${runId}`);
+  }
+
+  const typedWorkflowRun = toWorkflowRunRecord(workflowRunRecord);
+  const workflowDefinition = await getWorkflowDefinition(ctx, typedWorkflowRun.data.workflowId);
+  if (!workflowDefinition) {
+    throw new Error(`Workflow definition not found: ${typedWorkflowRun.data.workflowId}`);
+  }
+
+  const typedWorkflowDefinition = toWorkflowDefinitionRecord(workflowDefinition);
+  const stepRuns = (await listStepRuns(ctx, typedWorkflowRun.id, companyId)).map(toWorkflowStepRunRecord);
+  const stepRunsById = new Map(stepRuns.map((candidate) => [candidate.data.stepId, candidate]));
+
+  let resumed = false;
+  if (typedWorkflowRun.data.status !== RUN_STATUSES.running) {
+    await updateWorkflowRun(ctx, typedWorkflowRun.id, {
+      completedAt: undefined,
+      status: RUN_STATUSES.running,
+    });
+    resumed = true;
+  }
+
+  const candidateStatuses = new Set<WorkflowStepRun["status"]>([
+    STEP_STATUSES.failed,
+    STEP_STATUSES.backlog,
+    STEP_STATUSES.todo,
+    STEP_STATUSES.inProgress,
+    STEP_STATUSES.escalated,
+  ]);
+
+  const failedCandidates = stepRuns.filter(
+    (candidate) =>
+      candidate.data.status === STEP_STATUSES.failed
+      && areStepDependenciesSatisfied(typedWorkflowDefinition, candidate.data.stepId, stepRunsById),
+  );
+
+  const activationCandidates = (failedCandidates.length > 0
+    ? failedCandidates
+    : stepRuns.filter(
+      (candidate) =>
+        candidateStatuses.has(candidate.data.status)
+        && areStepDependenciesSatisfied(typedWorkflowDefinition, candidate.data.stepId, stepRunsById),
+    ))
+    .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+
+  const activatedStepIds: string[] = [];
+  for (const candidate of activationCandidates) {
+    const rerunResult = await rerunWorkflowStep(ctx, {
+      companyId,
+      stepRunId: candidate.id,
+    });
+    activatedStepIds.push(rerunResult.stepId);
+  }
+
+  if (activatedStepIds.length === 0) {
+    throw new Error("No resumable steps found for workflow run");
+  }
+
+  return {
+    activatedStepIds,
+    resumed,
+    runId: typedWorkflowRun.id,
+  };
 }
 
 async function startWorkflow(
@@ -1892,8 +2213,9 @@ const plugin = definePlugin({
           }
 
           const nextStatus = success ? STEP_STATUSES.done : STEP_STATUSES.failed;
+          const completedAt = new Date().toISOString();
           const updatedStepRun = toWorkflowStepRunRecord(await updateStepRun(ctx, stepRunId, {
-            completedAt: new Date().toISOString(),
+            completedAt,
             status: nextStatus as WorkflowStepRun["status"],
           }));
 
@@ -1904,6 +2226,40 @@ const plugin = definePlugin({
             success,
             toolName,
           });
+
+          if (updatedStepRun.data.issueId) {
+            const duration = formatDuration(updatedStepRun.data.startedAt, completedAt);
+            const statusLabel = success ? "completed" : "failed";
+            const errorSummary = typeof payload.error === "string" && payload.error.trim()
+              ? payload.error.trim().split("\n")[0]
+              : "";
+            const stdoutExcerpt = buildTextExcerpt(payload.stdout);
+            const stderrExcerpt = buildTextExcerpt(payload.stderr);
+            try {
+              await ctx.issues.createComment(
+                updatedStepRun.data.issueId,
+                [
+                  `### Tool ${statusLabel}: ${toolName}`,
+                  `- Step: ${updatedStepRun.data.stepId}`,
+                  `- Completed at: ${completedAt}`,
+                  `- Duration: ${duration}`,
+                  `- Exit code: ${payload.exitCode ?? "N/A"}`,
+                  ...(errorSummary ? [`- Error: ${errorSummary}`] : []),
+                  ...(stdoutExcerpt ? ["", "#### stdout", "```", stdoutExcerpt, "```"] : []),
+                  ...(stderrExcerpt ? ["", "#### stderr", "```", stderrExcerpt, "```"] : []),
+                ].join("\n"),
+                event.companyId,
+              );
+            } catch (commentError) {
+              ctx.logger.warn("Failed to post workflow tool completion comment", {
+                companyId: event.companyId,
+                error: summarizeError(commentError),
+                issueId: updatedStepRun.data.issueId,
+                stepId: updatedStepRun.data.stepId,
+                toolName,
+              });
+            }
+          }
 
           if (success) {
             const issueSyncResult = await syncWorkflowStepIssueStatusFromStepRun(
@@ -2028,6 +2384,27 @@ const plugin = definePlugin({
       return { id: runId, status: "aborted" };
     });
 
+    ctx.actions.register("rerun-step", async (rawParams: unknown) => {
+      const params = (rawParams && typeof rawParams === "object" ? rawParams : {}) as Record<string, unknown>;
+      const companyId = typeof params.companyId === "string" ? params.companyId.trim() : "";
+      const issueId = typeof params.issueId === "string" ? params.issueId.trim() : "";
+      const stepRunId = typeof params.stepRunId === "string" ? params.stepRunId.trim() : "";
+      if (!companyId || (!issueId && !stepRunId)) {
+        throw new Error("rerun-step requires companyId and either issueId or stepRunId");
+      }
+      return await rerunWorkflowStep(ctx, { companyId, issueId, stepRunId });
+    });
+
+    ctx.actions.register("resume-run", async (rawParams: unknown) => {
+      const params = (rawParams && typeof rawParams === "object" ? rawParams : {}) as Record<string, unknown>;
+      const runId = typeof params.runId === "string" ? params.runId.trim() : "";
+      const companyId = typeof params.companyId === "string" ? params.companyId.trim() : "";
+      if (!runId || !companyId) {
+        throw new Error("resume-run requires runId and companyId");
+      }
+      return await resumeWorkflowRunState(ctx, runId, companyId);
+    });
+
     ctx.actions.register("delete-workflow", async (rawParams: unknown) => {
       const params = (rawParams && typeof rawParams === "object" ? rawParams : {}) as Record<string, unknown>;
       const workflowId = typeof params.workflowId === "string" ? params.workflowId.trim()
@@ -2041,6 +2418,11 @@ const plugin = definePlugin({
 
     ctx.jobs.register(JOB_KEYS.reconciler, async (_job: PluginJobContext) => {
       await runReconciler(ctx);
+    });
+
+    registerDataHandler(ctx, "run-reconciler", async (_params: Record<string, unknown>) => {
+      await runReconciler(ctx);
+      return { ok: true };
     });
 
     registerDataHandler(ctx, "start-workflow", async (params: Record<string, unknown>) => {
@@ -2058,6 +2440,25 @@ const plugin = definePlugin({
         parentIssueId: parentIssueId || undefined,
         triggerSource: "api",
       });
+    });
+
+    registerDataHandler(ctx, "rerun-step", async (params: Record<string, unknown>) => {
+      const companyId = typeof params.companyId === "string" ? params.companyId.trim() : "";
+      const issueId = typeof params.issueId === "string" ? params.issueId.trim() : "";
+      const stepRunId = typeof params.stepRunId === "string" ? params.stepRunId.trim() : "";
+      if (!companyId || (!issueId && !stepRunId)) {
+        throw new Error("rerun-step requires companyId and either issueId or stepRunId");
+      }
+      return await rerunWorkflowStep(ctx, { companyId, issueId, stepRunId });
+    });
+
+    registerDataHandler(ctx, "resume-run", async (params: Record<string, unknown>) => {
+      const runId = typeof params.runId === "string" ? params.runId.trim() : "";
+      const companyId = typeof params.companyId === "string" ? params.companyId.trim() : "";
+      if (!runId || !companyId) {
+        throw new Error("resume-run requires runId and companyId");
+      }
+      return await resumeWorkflowRunState(ctx, runId, companyId);
     });
 
     registerDataHandler(ctx, "create-workflow", async (params: Record<string, unknown>) => {
