@@ -35,7 +35,10 @@ async function wakeupAgent(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         source: "automation",
-        payload: { issueId },
+        payload: {
+          issueId,
+          taskKey: `ops:${reason}:${agentId}:${issueId}`,
+        },
         reason,
         forceFreshSession,
       }),
