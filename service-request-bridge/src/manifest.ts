@@ -1,6 +1,7 @@
 import type { PaperclipPluginManifestV1 } from "@paperclipai/plugin-sdk";
 import {
   EXPORT_NAMES,
+  JOB_KEYS,
   PLUGIN_ID,
   PLUGIN_VERSION,
   SLOT_IDS,
@@ -16,6 +17,7 @@ const capabilities = [
   "projects.read",
   "plugin.state.read",
   "plugin.state.write",
+  "jobs.schedule",
   "ui.dashboardWidget.register",
   "ui.page.register",
   "ui.sidebar.register",
@@ -72,6 +74,14 @@ const manifest: PaperclipPluginManifestV1 = {
     worker: "./dist/worker.js",
     ui: "./dist/ui",
   },
+  jobs: [
+    {
+      jobKey: JOB_KEYS.mirrorBackfill,
+      displayName: "Mirror Backfill",
+      description: "Scans requester issues that match bridge rules but are missing a mirror link and backfills them.",
+      schedule: "*/5 * * * *",
+    },
+  ],
   instanceConfigSchema: {
     type: "object",
     properties: {

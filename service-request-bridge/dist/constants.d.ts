@@ -5,12 +5,14 @@ export declare const SLOT_IDS: {
     readonly detailTab: "service-request-bridge-detail-tab";
     readonly dashboardWidget: "service-request-bridge-dashboard-widget";
     readonly sidebar: "service-request-bridge-sidebar-link";
+    readonly settingsTab: "service-request-bridge-settings-tab";
 };
 export declare const EXPORT_NAMES: {
     readonly listTab: "ServiceRequestBridgeListTab";
     readonly detailTab: "ServiceRequestBridgeDetailTab";
     readonly dashboardWidget: "BridgeDashboardWidget";
     readonly sidebar: "BridgeSidebarLink";
+    readonly settingsTab: "BridgeSettingsTab";
 };
 export declare const ENTITY_TYPES: {
     readonly bridgeLink: "service-request-bridge-link";
@@ -26,9 +28,14 @@ export declare const DATA_KEYS: {
     readonly listTab: "service-request-bridge.list-tab";
     readonly detailTab: "service-request-bridge.detail-tab";
     readonly dashboardWidget: "service-request-bridge.dashboard-widget";
+    readonly settingsGet: "service-request-bridge.settings-get";
     readonly createLink: "service-request-bridge.create-link";
 };
 export declare const ACTION_KEYS: {
     readonly createLink: "service-request-bridge.create-link";
+    readonly settingsSave: "service-request-bridge.settings-save";
+};
+export declare const JOB_KEYS: {
+    readonly mirrorBackfill: "mirror-backfill";
 };
 export declare const SYNC_STAMP_TTL_MS: number;

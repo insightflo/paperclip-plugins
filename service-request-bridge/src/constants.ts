@@ -6,6 +6,7 @@ export const SLOT_IDS = {
   detailTab: "service-request-bridge-detail-tab",
   dashboardWidget: "service-request-bridge-dashboard-widget",
   sidebar: "service-request-bridge-sidebar-link",
+  settingsTab: "service-request-bridge-settings-tab",
 } as const;
 
 export const EXPORT_NAMES = {
@@ -13,6 +14,7 @@ export const EXPORT_NAMES = {
   detailTab: "ServiceRequestBridgeDetailTab",
   dashboardWidget: "BridgeDashboardWidget",
   sidebar: "BridgeSidebarLink",
+  settingsTab: "BridgeSettingsTab",
 } as const;
 
 export const ENTITY_TYPES = {
@@ -31,11 +33,17 @@ export const DATA_KEYS = {
   listTab: "service-request-bridge.list-tab",
   detailTab: "service-request-bridge.detail-tab",
   dashboardWidget: "service-request-bridge.dashboard-widget",
+  settingsGet: "service-request-bridge.settings-get",
   createLink: "service-request-bridge.create-link",
 } as const;
 
 export const ACTION_KEYS = {
-  createLink: DATA_KEYS.createLink
+  createLink: DATA_KEYS.createLink,
+  settingsSave: "service-request-bridge.settings-save",
+} as const;
+
+export const JOB_KEYS = {
+  mirrorBackfill: "mirror-backfill",
 } as const;
 
 export const SYNC_STAMP_TTL_MS = 10 * 60 * 1000;

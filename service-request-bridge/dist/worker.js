@@ -1,8 +1,9 @@
 import { definePlugin, runWorker, } from "@paperclipai/plugin-sdk";
-import { ACTION_KEYS, BRIDGE_DIRECTIONS, DATA_KEYS, PLUGIN_ID, SYNC_STAMP_TTL_MS, } from "./constants.js";
+import { ACTION_KEYS, BRIDGE_DIRECTIONS, DATA_KEYS, JOB_KEYS, PLUGIN_ID, SYNC_STAMP_TTL_MS, } from "./constants.js";
 import { asRecord, asString, asStringArray, canPropagateLocalToRemote, hasActiveSyncStamp, isEventProcessed, listBridgeLinksByCompany, listBridgeLinksForLocalIssue, makeSyncStampExternalId, markEventProcessed, normalizeDirection, touchBridgeSyncMeta, upsertBridgePair, upsertSyncStamp, } from "./store.js";
 const DEFAULT_REQUESTER_LABEL = "유지보수";
 const MIRROR_TITLE_PREFIX = "[유지보수]";
+const TELEGRAM_API_BASE = "https://api.telegram.org";
 function getNestedString(record, ...path) {
     let cursor = record;
     for (const key of path) {
@@ -100,6 +101,45 @@ function isMatchingLabel(labels, expectedLabelName) {
     }
     return labels.some((label) => normalizeName(label) === expected);
 }
+function firstLine(value) {
+    return value.split("\n")[0]?.trim() || value.trim();
+}
+function summarizeError(error) {
+    return error instanceof Error ? error.message : String(error);
+}
+function formatBridgeFailureComment(errorMessage, providerCompany) {
+    const timestamp = new Date().toISOString();
+    const target = providerCompany?.name || providerCompany?.id || "unknown";
+    return [
+        `⚠️ Bridge 실패: ${firstLine(errorMessage)}`,
+        `- 시각: ${timestamp}`,
+        `- 대상: ${target}`,
+        "수동 handoff 필요",
+    ].join("\n");
+}
+async function sendBridgeFailureTelegram(issueIdentifier, errorMessage) {
+    const botToken = process.env.TELEGRAM_BOT_TOKEN?.trim();
+    const chatId = process.env.TELEGRAM_CHAT_ID?.trim();
+    if (!botToken || !chatId) {
+        return;
+    }
+    const response = await fetch(`${TELEGRAM_API_BASE}/bot${botToken}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+            chat_id: chatId,
+            text: [
+                "⚠️ Bridge 실패",
+                `이슈: ${issueIdentifier}`,
+                `에러: ${firstLine(errorMessage)}`,
+                "→ 수동 확인 필요",
+            ].join("\n"),
+        }),
+    });
+    if (!response.ok) {
+        throw new Error(`telegram send failed: HTTP ${response.status}`);
+    }
+}
 function hasTitlePrefix(title, expectedPrefix) {
     const normalizedTitle = title.trim();
     const normalizedPrefix = expectedPrefix.trim();
@@ -124,6 +164,10 @@ function hasAnyMatchingLabel(labels, expectedLabelNames) {
 }
 function hasAnyTitlePrefix(title, expectedPrefixes) {
     return expectedPrefixes.some((prefix) => hasTitlePrefix(title, prefix));
+}
+function matchesRequesterSignal(title, labels, config) {
+    return Boolean(title) && (hasAnyMatchingLabel(labels, config.requesterLabelNames) ||
+        hasAnyTitlePrefix(title, config.requesterTitlePrefixes));
 }
 async function getBridgeConfig(ctx) {
     const raw = asRecord(await ctx.config.get());
@@ -202,6 +246,109 @@ async function resolveProviderCompany(ctx, config) {
     if (exact)
         return exact;
     return companies.find((company) => normalizeName(company.name) === normalizeName(config.providerCompanyName)) ?? null;
+}
+async function recordBridgeFailure(ctx, companyId, issueId, issueIdentifier, providerCompany, error) {
+    const errorMessage = summarizeError(error);
+    const failureComment = formatBridgeFailureComment(errorMessage, providerCompany);
+    try {
+        await ctx.issues.createComment(issueId, failureComment, companyId);
+    }
+    catch (commentError) {
+        ctx.logger.error("Failed to record bridge failure comment", {
+            localCompanyId: companyId,
+            localIssueId: issueId,
+            error: summarizeError(commentError),
+        });
+    }
+    try {
+        await sendBridgeFailureTelegram(issueIdentifier, errorMessage);
+    }
+    catch (telegramError) {
+        ctx.logger.warn("Failed to send bridge failure telegram", {
+            localCompanyId: companyId,
+            localIssueId: issueId,
+            error: summarizeError(telegramError),
+        });
+    }
+}
+async function ensureMirrorIssue(ctx, sourceIssue, config) {
+    const sourceIssueId = sourceIssue.id;
+    const sourceTitle = sourceIssue.title;
+    const sourceDescription = asString(sourceIssue?.description);
+    const sourceLabels = getLabelNames(sourceIssue?.labels);
+    if (!matchesRequesterSignal(sourceTitle, sourceLabels, config)) {
+        return "not-matched";
+    }
+    const providerCompany = await resolveProviderCompany(ctx, config);
+    if (!providerCompany) {
+        throw new Error(`Provider company is not configured or not found: ${config.providerCompanyName || config.providerCompanyId || "(empty)"}`);
+    }
+    if (providerCompany.id === sourceIssue.companyId) {
+        ctx.logger.warn("Provider company equals requester company. Auto mirror skipped.", {
+            companyId: sourceIssue.companyId,
+            issueId: sourceIssueId,
+            providerCompanyId: providerCompany.id,
+        });
+        return "skipped-provider";
+    }
+    const existingLinks = await listBridgeLinksForLocalIssue(ctx, sourceIssue.companyId, sourceIssueId);
+    const alreadyLinked = existingLinks.some((link) => link.data.remoteCompanyId === providerCompany.id);
+    if (alreadyLinked) {
+        return "already-linked";
+    }
+    const workflowLabel = typeof config.workflowTriggerLabel === "string" && config.workflowTriggerLabel.trim()
+        ? config.workflowTriggerLabel.trim()
+        : "";
+    const mirrorTitle = workflowLabel
+        ? `[${workflowLabel}] ${MIRROR_TITLE_PREFIX} ${sourceTitle}`
+        : `${MIRROR_TITLE_PREFIX} ${sourceTitle}`;
+    const mirrorCreateParams = {
+        companyId: providerCompany.id,
+        title: mirrorTitle,
+        description: sourceDescription,
+    };
+    if (workflowLabel) {
+        mirrorCreateParams.labels = [workflowLabel];
+    }
+    if (config.providerProjectId || config.providerProjectName) {
+        const providerProjects = await ctx.projects.list({ companyId: providerCompany.id });
+        const targetProject = config.providerProjectId
+            ? providerProjects.find((project) => project.id === config.providerProjectId)
+            : providerProjects.find((project) => project.name === config.providerProjectName);
+        if (targetProject) {
+            mirrorCreateParams.projectId = targetProject.id;
+        }
+    }
+    const providerCeoAgentId = await resolveCompanyCeoAgentId(ctx, providerCompany.id);
+    if (providerCeoAgentId) {
+        mirrorCreateParams.assigneeAgentId = providerCeoAgentId;
+    }
+    const mirrorIssue = await ctx.issues.create(mirrorCreateParams);
+    await ctx.issues.update(sourceIssueId, {
+        status: "blocked",
+        assigneeAgentId: null,
+    }, sourceIssue.companyId);
+    const handoffComment = [
+        `보수팀으로 유지보수 handoff 완료: ${mirrorIssue.identifier ?? mirrorIssue.id}`,
+        `- 대상 회사: ${providerCompany.name}`,
+        providerCeoAgentId ? "- 처리 방식: 보수팀 CEO가 담당 할당 및 완료 보고를 관리" : "- 처리 방식: 보수팀에서 후속 triage 필요",
+    ].join("\n");
+    await ctx.issues.createComment(sourceIssueId, handoffComment, sourceIssue.companyId);
+    await upsertBridgePair(ctx, {
+        localCompanyId: sourceIssue.companyId,
+        localIssueId: sourceIssueId,
+        remoteCompanyId: providerCompany.id,
+        remoteIssueId: mirrorIssue.id,
+        direction: BRIDGE_DIRECTIONS.twoWay,
+        createdBy: "service-request-bridge-auto",
+    });
+    ctx.logger.info("Auto-created mirror issue and bridge link", {
+        localCompanyId: sourceIssue.companyId,
+        localIssueId: sourceIssueId,
+        providerCompanyId: providerCompany.id,
+        remoteIssueId: mirrorIssue.id,
+    });
+    return "created";
 }
 async function resolveCompanyCeoAgentId(ctx, companyId) {
     if (!companyId) {
@@ -599,100 +746,66 @@ async function handleIssueCreated(ctx, event) {
         ...getLabelNames(sourceIssue?.labels),
         ...refs.labels,
     ];
-    const matchesRequesterSignal = Boolean(sourceTitle) && (hasAnyMatchingLabel(sourceLabels, config.requesterLabelNames) ||
-        hasAnyTitlePrefix(sourceTitle, config.requesterTitlePrefixes));
-    if (!matchesRequesterSignal) {
+    if (!matchesRequesterSignal(sourceTitle, sourceLabels, config)) {
         if (eventId) {
             await markEventProcessed(ctx, refs.companyId, eventId);
         }
+        return;
+    }
+    try {
+        await ensureMirrorIssue(ctx, sourceIssue, config);
+        if (eventId) {
+            await markEventProcessed(ctx, refs.companyId, eventId);
+        }
+    }
+    catch (error) {
+        const providerCompany = await resolveProviderCompany(ctx, config);
+        await recordBridgeFailure(ctx, refs.companyId, sourceIssueId, sourceIssue?.identifier ?? refs.issueId, providerCompany, error);
+        ctx.logger.error("Auto mirror issue creation failed", {
+            localCompanyId: refs.companyId,
+            localIssueId: sourceIssueId,
+            providerCompanyId: providerCompany?.id ?? null,
+            error: summarizeError(error),
+        });
+        if (eventId) {
+            await markEventProcessed(ctx, refs.companyId, eventId);
+        }
+    }
+}
+async function runMirrorBackfill(ctx) {
+    const config = await getBridgeConfig(ctx);
+    if (!config.autoCreateMirrorIssue) {
         return;
     }
     const providerCompany = await resolveProviderCompany(ctx, config);
     if (!providerCompany) {
-        ctx.logger.warn("Provider company name is not configured or not found", {
-            companyId: refs.companyId,
-            providerCompanyName: config.providerCompanyName,
-            issueId: sourceIssueId,
-        });
-        if (eventId) {
-            await markEventProcessed(ctx, refs.companyId, eventId);
-        }
+        ctx.logger.warn("Mirror backfill skipped because provider company is not configured");
         return;
     }
-    if (providerCompany.id === refs.companyId) {
-        ctx.logger.warn("Provider company equals requester company. Auto mirror skipped.", {
-            companyId: refs.companyId,
-            issueId: sourceIssueId,
-            providerCompanyId: providerCompany.id,
-        });
-        if (eventId) {
-            await markEventProcessed(ctx, refs.companyId, eventId);
+    const companies = await listCompanies(ctx);
+    for (const company of companies) {
+        if (company.id === providerCompany.id) {
+            continue;
         }
-        return;
-    }
-    const existingLinks = await listBridgeLinksForLocalIssue(ctx, refs.companyId, sourceIssueId);
-    const alreadyLinked = existingLinks.some((link) => link.data.remoteCompanyId === providerCompany.id);
-    if (alreadyLinked) {
-        if (eventId) {
-            await markEventProcessed(ctx, refs.companyId, eventId);
+        const issues = await listIssues(ctx, company.id);
+        for (const issue of issues) {
+            const labels = getLabelNames(issue?.labels);
+            if (!matchesRequesterSignal(issue.title, labels, config)) {
+                continue;
+            }
+            try {
+                await ensureMirrorIssue(ctx, issue, config);
+            }
+            catch (error) {
+                await recordBridgeFailure(ctx, issue.companyId, issue.id, issue.identifier ?? issue.id, providerCompany, error);
+                ctx.logger.error("Mirror backfill failed", {
+                    companyId: issue.companyId,
+                    issueId: issue.id,
+                    identifier: issue.identifier,
+                    error: summarizeError(error),
+                });
+            }
         }
-        return;
-    }
-    const workflowLabel = typeof config.workflowTriggerLabel === "string" && config.workflowTriggerLabel.trim()
-        ? config.workflowTriggerLabel.trim()
-        : "";
-    const mirrorTitle = workflowLabel
-        ? `[${workflowLabel}] ${MIRROR_TITLE_PREFIX} ${sourceTitle}`
-        : `${MIRROR_TITLE_PREFIX} ${sourceTitle}`;
-    const mirrorCreateParams = {
-        companyId: providerCompany.id,
-        title: mirrorTitle,
-        description: sourceDescription,
-    };
-    if (workflowLabel) {
-        mirrorCreateParams.labels = [workflowLabel];
-    }
-    // Resolve provider project by name and attach projectId to mirror issue
-    if (config.providerProjectId || config.providerProjectName) {
-        const providerProjects = await ctx.projects.list({ companyId: providerCompany.id });
-        const targetProject = config.providerProjectId
-            ? providerProjects.find((project) => project.id === config.providerProjectId)
-            : providerProjects.find((project) => project.name === config.providerProjectName);
-        if (targetProject) {
-            mirrorCreateParams.projectId = targetProject.id;
-        }
-    }
-    const providerCeoAgentId = await resolveCompanyCeoAgentId(ctx, providerCompany.id);
-    if (providerCeoAgentId) {
-        mirrorCreateParams.assigneeAgentId = providerCeoAgentId;
-    }
-    const mirrorIssue = await ctx.issues.create(mirrorCreateParams);
-    await ctx.issues.update(sourceIssueId, {
-        status: "blocked",
-        assigneeAgentId: null,
-    }, refs.companyId);
-    const handoffComment = [
-        `보수팀으로 유지보수 handoff 완료: ${mirrorIssue.identifier ?? mirrorIssue.id}`,
-        `- 대상 회사: ${providerCompany.name}`,
-        providerCeoAgentId ? "- 처리 방식: 보수팀 CEO가 담당 할당 및 완료 보고를 관리" : "- 처리 방식: 보수팀에서 후속 triage 필요",
-    ].join("\n");
-    await ctx.issues.createComment(sourceIssueId, handoffComment, refs.companyId);
-    await upsertBridgePair(ctx, {
-        localCompanyId: refs.companyId,
-        localIssueId: sourceIssueId,
-        remoteCompanyId: providerCompany.id,
-        remoteIssueId: mirrorIssue.id,
-        direction: BRIDGE_DIRECTIONS.twoWay,
-        createdBy: "service-request-bridge-auto",
-    });
-    ctx.logger.info("Auto-created mirror issue and bridge link", {
-        localCompanyId: refs.companyId,
-        localIssueId: sourceIssueId,
-        providerCompanyId: providerCompany.id,
-        remoteIssueId: mirrorIssue.id,
-    });
-    if (eventId) {
-        await markEventProcessed(ctx, refs.companyId, eventId);
     }
 }
 async function handleIssueUpdated(ctx, event) {
@@ -772,10 +885,34 @@ const plugin = definePlugin({
         registerDataHandlers(ctx);
         registerActionHandlers(ctx);
         ctx.events.on("issue.created", async (event) => {
-            await handleIssueCreated(ctx, event);
+            try {
+                await handleIssueCreated(ctx, event);
+            }
+            catch (error) {
+                const refs = extractIssueCreatedRefs(event);
+                if (refs.companyId && refs.issueId) {
+                    const providerCompany = await resolveProviderCompany(ctx, await getBridgeConfig(ctx));
+                    await recordBridgeFailure(ctx, refs.companyId, refs.issueId, refs.issueId, providerCompany, error);
+                }
+                ctx.logger.error("Unhandled bridge issue.created failure", {
+                    companyId: refs.companyId,
+                    issueId: refs.issueId,
+                    error: summarizeError(error),
+                });
+            }
         });
         ctx.events.on("issue.updated", async (event) => {
-            await handleIssueUpdated(ctx, event);
+            try {
+                await handleIssueUpdated(ctx, event);
+            }
+            catch (error) {
+                ctx.logger.error("Unhandled bridge issue.updated failure", {
+                    error: summarizeError(error),
+                });
+            }
+        });
+        ctx.jobs.register(JOB_KEYS.mirrorBackfill, async () => {
+            await runMirrorBackfill(ctx);
         });
         ctx.logger.info("Service Request Bridge plugin worker initialized", {
             pluginId: PLUGIN_ID,

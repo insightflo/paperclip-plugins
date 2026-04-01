@@ -1,4 +1,4 @@
-import { EXPORT_NAMES, PLUGIN_ID, PLUGIN_VERSION, SLOT_IDS, } from "./constants.js";
+import { EXPORT_NAMES, JOB_KEYS, PLUGIN_ID, PLUGIN_VERSION, SLOT_IDS, } from "./constants.js";
 const capabilities = [
     "events.subscribe",
     "issues.read",
@@ -6,8 +6,10 @@ const capabilities = [
     "issues.update",
     "issue.comments.create",
     "companies.read",
+    "projects.read",
     "plugin.state.read",
     "plugin.state.write",
+    "jobs.schedule",
     "ui.dashboardWidget.register",
     "ui.page.register",
     "ui.sidebar.register",
@@ -19,6 +21,13 @@ const slots = [
         id: SLOT_IDS.listTab,
         displayName: "Service Bridge",
         exportName: EXPORT_NAMES.listTab,
+        routePath: "service-request-bridge",
+    },
+    {
+        type: "sidebar",
+        id: SLOT_IDS.sidebar,
+        displayName: "Service Bridge",
+        exportName: EXPORT_NAMES.sidebar,
     },
     {
         type: "detailTab",
@@ -32,6 +41,13 @@ const slots = [
         id: SLOT_IDS.dashboardWidget,
         displayName: "Service Bridge",
         exportName: EXPORT_NAMES.dashboardWidget,
+    },
+    {
+        type: "page",
+        id: SLOT_IDS.settingsTab,
+        displayName: "Bridge Settings",
+        exportName: EXPORT_NAMES.settingsTab,
+        routePath: "bridge-settings",
     },
 ];
 const manifest = {
@@ -47,18 +63,40 @@ const manifest = {
         worker: "./dist/worker.js",
         ui: "./dist/ui",
     },
+    jobs: [
+        {
+            jobKey: JOB_KEYS.mirrorBackfill,
+            displayName: "Mirror Backfill",
+            description: "Scans requester issues that match bridge rules but are missing a mirror link and backfills them.",
+            schedule: "*/5 * * * *",
+        },
+    ],
     instanceConfigSchema: {
         type: "object",
         properties: {
+            providerCompanyId: {
+                type: "string",
+                title: "Provider company id",
+                description: "Selected provider company id",
+            },
             providerCompanyName: {
                 type: "string",
                 title: "Provider company name",
-                description: "Company that handles maintenance requests",
+                description: "Legacy fallback company name for older configs",
             },
-            requesterLabelName: {
-                type: "string",
-                title: "Requester label",
-                default: "유지보수",
+            requesterLabelNames: {
+                type: "array",
+                title: "Requester issue label aliases",
+                description: "Mirror issue is auto-created when the requester issue has any of these label names",
+                items: { type: "string" },
+                default: ["유지보수", "maintenance"],
+            },
+            requesterTitlePrefixes: {
+                type: "array",
+                title: "Requester issue title prefixes",
+                description: "Mirror issue is auto-created when the requester issue title starts with any of these bracketed prefixes",
+                items: { type: "string" },
+                default: ["유지보수", "maintenance"],
             },
             autoCreateMirrorIssue: {
                 type: "boolean",
@@ -69,6 +107,16 @@ const manifest = {
                 type: "string",
                 title: "Workflow trigger label for mirror issues",
                 description: "Label to add to mirror issues to auto-start a workflow (e.g. wf:maintenance-triage)",
+            },
+            providerProjectId: {
+                type: "string",
+                title: "Provider project id",
+                description: "Selected provider project id",
+            },
+            providerProjectName: {
+                type: "string",
+                title: "Provider project name",
+                description: "Legacy fallback project name for older configs",
             },
         },
     },

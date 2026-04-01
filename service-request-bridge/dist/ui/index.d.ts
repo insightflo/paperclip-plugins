@@ -22,6 +22,7 @@ type GenericIssueTabProps = {
 export declare function ServiceRequestBridgeListTab(props: GenericIssueTabProps): JSX.Element;
 export declare function ServiceRequestBridgeDetailTab(props: GenericIssueTabProps): JSX.Element;
 export declare function BridgeDashboardWidget({ context }: PluginWidgetProps): JSX.Element;
+export declare function BridgeSettingsTab(): JSX.Element;
 export declare function BridgeSidebarLink({ context }: {
     context: {
         companyPrefix?: string | null;
