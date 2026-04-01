@@ -122,7 +122,8 @@ async function wakeStuckTodosForCompany(ctx, company) {
             continue;
         if (issue.executionRunId)
             continue;
-        await wakeupAgent(assigneeAgentId, issue.id, "stuck_todo_wakeup");
+        const forceFreshSession = isInspectorAgent(assignee);
+        await wakeupAgent(assigneeAgentId, issue.id, "stuck_todo_wakeup", forceFreshSession);
     }
 }
 function getInspectionAgents(agents) {
