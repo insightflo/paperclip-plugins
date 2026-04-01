@@ -5,6 +5,7 @@ const capabilities = [
     "issues.create",
     "issues.update",
     "issue.comments.create",
+    "agents.read",
     "companies.read",
     "projects.read",
     "plugin.state.read",
