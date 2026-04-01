@@ -166,6 +166,14 @@ function toScopeKind(value: unknown): PluginEntityScopeKind {
   return "company";
 }
 
+function buildToolExternalId(companyId: string, toolName: string): string {
+  return `${companyId}::${toolName}`;
+}
+
+function buildGrantExternalId(companyId: string, agentName: string, toolName: string): string {
+  return `${companyId}::${agentName}::${toolName}`;
+}
+
 async function listByType(
   ctx: PluginContext,
   entityType: string,
@@ -243,6 +251,46 @@ async function findByExternalId(
 ): Promise<PluginEntityRecord | null> {
   const all = await listByType(ctx, entityType, companyId);
   return all.find((record: PluginEntityRecord) => record.externalId === externalId) ?? null;
+}
+
+async function findToolByName(
+  ctx: PluginContext,
+  companyId: string,
+  toolName: string,
+): Promise<PluginEntityRecord | null> {
+  const normalizedToolName = normalizeName(toolName, "toolName");
+  const scopedExternalId = buildToolExternalId(companyId, normalizedToolName);
+  const all = await listAllByType(ctx, ENTITY_TYPES.toolConfig, companyId);
+
+  return all.find((record: PluginEntityRecord) => {
+    const data = asRecord(record.data);
+    const recordName = asNonEmptyString(data.name);
+    return record.externalId === scopedExternalId
+      || record.externalId === normalizedToolName
+      || recordName === normalizedToolName;
+  }) ?? null;
+}
+
+async function findGrantRecord(
+  ctx: PluginContext,
+  companyId: string,
+  agentName: string,
+  toolName: string,
+): Promise<PluginEntityRecord | null> {
+  const normalizedAgentName = normalizeName(agentName, "agentName");
+  const normalizedToolName = normalizeName(toolName, "toolName");
+  const scopedExternalId = buildGrantExternalId(companyId, normalizedAgentName, normalizedToolName);
+  const legacyExternalId = `${normalizedAgentName}::${normalizedToolName}`;
+  const all = await listAllByType(ctx, ENTITY_TYPES.agentToolGrant, companyId);
+
+  return all.find((record: PluginEntityRecord) => {
+    const data = asRecord(record.data);
+    const recordAgent = asNonEmptyString(data.agentName);
+    const recordTool = asNonEmptyString(data.toolName);
+    return record.externalId === scopedExternalId
+      || record.externalId === legacyExternalId
+      || (recordAgent === normalizedAgentName && recordTool === normalizedToolName);
+  }) ?? null;
 }
 
 async function getById(
@@ -350,7 +398,7 @@ export async function createTool(
 ): Promise<ToolConfigRecord> {
   const nowIso = new Date().toISOString();
   const data = toToolConfigData(input, nowIso);
-  const existing = await findByExternalId(ctx, ENTITY_TYPES.toolConfig, companyId, data.name);
+  const existing = await findToolByName(ctx, companyId, data.name);
   if (existing) {
     throw new Error(`Tool already exists: ${data.name}`);
   }
@@ -359,7 +407,7 @@ export async function createTool(
     entityType: ENTITY_TYPES.toolConfig,
     scopeKind: "company",
     scopeId: companyId,
-    externalId: data.name,
+    externalId: buildToolExternalId(companyId, data.name),
     title: data.name,
     status: "active",
     data: asDataRecord(data),
@@ -375,7 +423,7 @@ export async function updateTool(
   patch: Partial<ToolConfig>,
 ): Promise<ToolConfigRecord> {
   const normalizedToolName = normalizeName(toolName, "toolName");
-  const existing = await findByExternalId(ctx, ENTITY_TYPES.toolConfig, companyId, normalizedToolName);
+  const existing = await findToolByName(ctx, companyId, normalizedToolName);
   if (!existing) {
     throw new Error(`Tool not found: ${normalizedToolName}`);
   }
@@ -395,7 +443,7 @@ export async function updateTool(
   const updated = await updateEntity(ctx, ENTITY_TYPES.toolConfig, existing.id, {
     title: merged.name,
     status: "active",
-    externalId: merged.name,
+    externalId: buildToolExternalId(companyId, merged.name),
     data: asDataRecord(merged),
   });
 
@@ -408,7 +456,7 @@ export async function deleteTool(
   toolName: string,
 ): Promise<void> {
   const normalizedToolName = normalizeName(toolName, "toolName");
-  const existing = await findByExternalId(ctx, ENTITY_TYPES.toolConfig, companyId, normalizedToolName);
+  const existing = await findToolByName(ctx, companyId, normalizedToolName);
   if (!existing) {
     return;
   }
@@ -421,8 +469,7 @@ export async function getToolByName(
   companyId: string,
   toolName: string,
 ): Promise<ToolConfigRecord | null> {
-  const normalizedToolName = normalizeName(toolName, "toolName");
-  const found = await findByExternalId(ctx, ENTITY_TYPES.toolConfig, companyId, normalizedToolName);
+  const found = await findToolByName(ctx, companyId, toolName);
   return found ? toToolConfigRecord(found) : null;
 }
 
@@ -452,10 +499,7 @@ export async function restoreTool(
   toolName: string,
 ): Promise<ToolConfigRecord> {
   const normalizedToolName = normalizeName(toolName, "toolName");
-  const allRecords = await listAllByType(ctx, ENTITY_TYPES.toolConfig, companyId);
-  const existing = allRecords.find(
-    (record: PluginEntityRecord) => record.externalId === normalizedToolName,
-  );
+  const existing = await findToolByName(ctx, companyId, normalizedToolName);
 
   if (!existing) {
     throw new Error(`Tool not found: ${normalizedToolName}`);
@@ -468,7 +512,7 @@ export async function restoreTool(
     entityType: existing.entityType,
     scopeKind: toScopeKind(existing.scopeKind),
     scopeId: existing.scopeId ?? undefined,
-    externalId: existing.externalId ?? `${existing.entityType}:${existing.id}`,
+    externalId: buildToolExternalId(companyId, normalizedToolName),
     title: existing.title ?? undefined,
     status: "active",
     data: {
@@ -487,14 +531,14 @@ export async function grantTool(
 ): Promise<AgentToolGrantRecord> {
   const nowIso = new Date().toISOString();
   const data = toGrantData(input, nowIso);
-  const grantExternalId = `${data.agentName}::${data.toolName}`;
+  const grantExternalId = buildGrantExternalId(companyId, data.agentName, data.toolName);
 
   const tool = await getToolByName(ctx, companyId, data.toolName);
   if (!tool) {
     throw new Error(`Tool not found: ${data.toolName}`);
   }
 
-  const existing = await findByExternalId(ctx, ENTITY_TYPES.agentToolGrant, companyId, grantExternalId);
+  const existing = await findGrantRecord(ctx, companyId, data.agentName, data.toolName);
   if (existing) {
     return toGrantRecord(existing);
   }
@@ -520,8 +564,7 @@ export async function revokeTool(
 ): Promise<void> {
   const normalizedAgentName = normalizeName(agentName, "agentName");
   const normalizedToolName = normalizeName(toolName, "toolName");
-  const externalId = `${normalizedAgentName}::${normalizedToolName}`;
-  const existing = await findByExternalId(ctx, ENTITY_TYPES.agentToolGrant, companyId, externalId);
+  const existing = await findGrantRecord(ctx, companyId, normalizedAgentName, normalizedToolName);
 
   if (!existing) {
     return;
