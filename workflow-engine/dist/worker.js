@@ -13,6 +13,47 @@ const inflightStepActivationKeys = new Set();
 function resolveTemplateVars(template, vars) {
     return template.replace(/\{\$(\w+)\}/g, (_, key) => vars[key] ?? `{$${key}}`);
 }
+function parseRunLabelParts(runLabel) {
+    const value = typeof runLabel === "string" ? runLabel.trim() : "";
+    const match = /^#(\d{4}-\d{2}-\d{2})-(\d+)$/.exec(value);
+    if (!match) {
+        return {};
+    }
+    return {
+        date: match[1],
+        runNumber: match[2],
+    };
+}
+function resolveWorkflowRunDate(workflowRun, workflowDefinition) {
+    const explicit = typeof workflowRun.data.runDate === "string" ? workflowRun.data.runDate.trim() : "";
+    if (explicit) {
+        return explicit;
+    }
+    const parsed = parseRunLabelParts(workflowRun.data.runLabel);
+    if (parsed.date) {
+        return parsed.date;
+    }
+    const startedAt = typeof workflowRun.data.startedAt === "string" ? workflowRun.data.startedAt.trim() : "";
+    const startedMs = Date.parse(startedAt);
+    if (Number.isFinite(startedMs)) {
+        const timezone = typeof workflowDefinition.data.timezone === "string"
+            ? workflowDefinition.data.timezone.trim()
+            : "";
+        return formatDateKeyInTimezone(new Date(startedMs), timezone || undefined)
+            ?? new Date(startedMs).toISOString().slice(0, 10);
+    }
+    return new Date().toISOString().slice(0, 10);
+}
+function resolveWorkflowRunNumber(workflowRun) {
+    if (typeof workflowRun.data.runNumber === "number" && Number.isFinite(workflowRun.data.runNumber)) {
+        return String(workflowRun.data.runNumber);
+    }
+    const parsed = parseRunLabelParts(workflowRun.data.runLabel);
+    if (parsed.runNumber) {
+        return parsed.runNumber;
+    }
+    return "";
+}
 function extractLabelNames(payload) {
     const names = [];
     const candidates = [
@@ -678,6 +719,8 @@ async function startWorkflow(ctx, workflowId, companyId, options) {
         companyId,
         parentIssueId: parentIssueId || undefined,
         runLabel,
+        runDate: dateStr,
+        runNumber,
         startedAt: new Date().toISOString(),
         status: RUN_STATUSES.running,
         triggerSource: options?.triggerSource,
@@ -841,8 +884,8 @@ async function advanceWorkflow(ctx, stepRunRecord, companyId) {
                 labelIds: typedWorkflowDefinition.data.labelIds,
                 runLabel: typedWorkflowRun.data.runLabel,
                 templateVars: {
-                    date: (typedWorkflowRun.data.startedAt ?? "").slice(0, 10),
-                    runNumber: String(typedWorkflowRun.data.runLabel ?? "").replace(/^#\d{4}-\d{2}-\d{2}-/, ""),
+                    date: resolveWorkflowRunDate(typedWorkflowRun, typedWorkflowDefinition),
+                    runNumber: resolveWorkflowRunNumber(typedWorkflowRun),
                     runLabel: typedWorkflowRun.data.runLabel ?? "",
                     workflowName: typedWorkflowRun.data.workflowName,
                 },
